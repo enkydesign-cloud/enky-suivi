@@ -337,6 +337,8 @@ function contactCard(c) {
       ${c.tel ? `<a class="btn sm alt" style="text-decoration:none" target="_blank" href="${waLink(c.tel, msg)}">WhatsApp</a><a class="btn sm alt" style="text-decoration:none" href="tel:${esc(c.tel)}">Appeler</a>` : ""}
       <button class="btn sm grey" data-act="newDoc" data-id="${c.id}">+ Devis</button>
       <button class="btn sm grey" data-act="editContact" data-id="${c.id}">Modifier</button>
+      <span class="sp"></span>
+      <button class="btn sm danger" data-act="quickDelContact" data-id="${c.id}" title="Supprimer ce contact">🗑</button>
     </div></div>`;
 }
 function viewContacts() {
@@ -350,16 +352,22 @@ function viewContacts() {
 }
 function viewDocs() {
   const list = [...docs].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  return (list.length ? list.map(d => `<div class="card">
+  return (list.length ? list.map(d => { const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0); return `<div class="card">
     <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span><span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span></div>
     <div style="margin:4px 0">${esc(d.clientNom)}${d.clientEntreprise ? " · " + esc(d.clientEntreprise) : ""}</div>
-    <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(totals(d).total)}</div>
-    <div class="row">
+    <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>
+    ${paye > 0 ? `<div class="muted">Reçu : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b></div>` : ""}
+    <div class="row" style="margin-top:6px">
       <button class="btn sm" data-act="pdf" data-id="${d.id}">PDF</button>
       <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
       ${d.type === "Devis" ? `<button class="btn sm grey" data-act="toProforma" data-id="${d.id}">→ Proforma</button>` : ""}
+      <button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Reçu</button>
+    </div>
+    <div class="row" style="margin-top:6px">
       <select data-change="docStatus" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(s => `<option ${d.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-    </div></div>`).join("") : `<div class="card muted">Aucun document pour l'instant. Appuyez sur + pour créer un devis ou une proforma.</div>`)
+      <span class="sp"></span>
+      <button class="btn sm danger" data-act="quickDelDoc" data-id="${d.id}" title="Supprimer ce document">🗑</button>
+    </div></div>`; }).join("") : `<div class="card muted">Aucun document pour l'instant. Appuyez sur + pour créer un devis ou une proforma.</div>`)
     + `<button class="fab" data-act="newDoc" title="Nouveau document">+</button>`;
 }
 function viewSettings() {
@@ -489,6 +497,77 @@ async function setDocStatus(id, statut) {
   } catch (e) { toast("Échec : " + e.code); }
 }
 
+// ---------- reçu de paiement ----------
+function recuForm(docId) {
+  const d = docs.find(x => x.id === docId); if (!d) return;
+  const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0);
+  edit = { docId, docTotal: t.total, dejaPaye: paye };
+  openSheet(`<h3>Reçu de paiement</h3><p class="muted">${esc(d.numero)} — ${esc(d.clientNom)}</p>
+  <label>Montant reçu (FCFA)</label><input id="r_montant" inputmode="numeric" value="${reste || t.total}">
+  <label>Mode de paiement</label><select id="r_mode"><option>Orange Money</option><option>MTN MoMo</option><option>Virement</option><option>Espèces</option><option>Chèque</option></select>
+  <label>Nature du paiement</label><select id="r_nature"><option>Acompte</option><option>Paiement intermédiaire</option><option ${paye > 0 ? "selected" : ""}>Solde final</option><option ${paye === 0 ? "selected" : ""}>Paiement intégral</option></select>
+  <label>Date</label><input id="r_date" type="date" value="${today()}">
+  <div class="tot" style="margin-top:12px"><div><span>Total du document</span><span>${money(t.total)}</span></div><div><span>Déjà réglé</span><span>${money(paye)}</span></div><div class="big"><span>Reste avant ce paiement</span><span>${money(reste)}</span></div></div>
+  <div class="row" style="margin-top:14px"><button class="btn" data-act="saveRecu">Générer le reçu (PDF)</button><button class="btn grey" data-act="closeSheet">Annuler</button></div>`);
+}
+async function saveRecu() {
+  const montant = num($("#r_montant").value); const mode = $("#r_mode").value, nature = $("#r_nature").value, date = $("#r_date").value || today();
+  if (!montant) return toast("Indiquez le montant reçu.");
+  const d = docs.find(x => x.id === edit.docId); if (!d) return;
+  try {
+    const yr = date.slice(0, 4); const cref = doc(db, "counters", "REC-" + yr);
+    const n = await runTransaction(db, async tx => { const s = await tx.get(cref); const v = (s.exists() ? s.data().n : 0) + 1; tx.set(cref, { n: v }); return v; });
+    const numero = `REC-${yr}-${String(n).padStart(3, "0")}`;
+    const paiements = [...(d.paiements || []), { numero, date, montant, mode, nature }];
+    await updateDoc(doc(db, "documents", d.id), { paiements });
+    const t = totals(d); const dejaPaye = paiements.reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - dejaPaye, 0);
+    closeSheet(); toast("Reçu généré : " + numero);
+    makeRecuPdf(d, { numero, date, montant, mode, nature }, t.total, dejaPaye, reste);
+    if (reste <= 0) setDocStatus(d.id, "Accepté");
+  } catch (e) { toast("Échec : " + e.code); }
+}
+function makeRecuPdf(d, recu, docTotal, dejaPaye, reste) {
+  const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
+  const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
+  const s = settings;
+  try { p.addImage(LOGO, "PNG", M, 9, 22, 22); } catch (e) {}
+  p.setFont("helvetica", "bold").setFontSize(17).setTextColor(...RED).text("ENKY DESIGN", M + 26, 19);
+  p.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...GREY).text("Web  |  Design graphique  |  Formation  |  Assistance IT", M + 26, 24.5);
+  const hl = ["Douala, Cameroun", s.tel && "Tel / WhatsApp : " + s.tel, s.email].filter(Boolean);
+  hl.forEach((l, i) => p.setFontSize(8).text(l, R, 14 + i * 4.2, { align: "right" }));
+  p.setDrawColor(...RED).setLineWidth(0.9).line(M, 34, R, 34); p.setDrawColor(...INK).setLineWidth(0.2).line(M, 35.4, R, 35.4);
+  p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
+  p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text("REÇU DE PAIEMENT", M + 5, 49.5);
+  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${recu.numero}   |   Date : ${fdate(recu.date)}`, M + 5, 54.5);
+  let y = 68;
+  const rows1 = [["Reçu de", d.clientNom + (d.clientEntreprise ? " (" + d.clientEntreprise + ")" : "")], ["La somme de", money(recu.montant)], ["En lettres", enLettres(recu.montant) + " francs CFA"], ["Mode de paiement", recu.mode], ["Nature du paiement", recu.nature], ["Document concerné", d.numero + " — " + (d.objet || "")]];
+  p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid", body: rows1,
+    styles: { fontSize: 9.5, cellPadding: 3, lineColor: [221, 211, 211], textColor: INK }, columnStyles: { 0: { cellWidth: 48, fillColor: [248, 241, 241], fontStyle: "bold" } } });
+  y = p.lastAutoTable.finalY + 8;
+  p.setFont("helvetica", "bold").setFontSize(10).setTextColor(...RED).text("Situation du compte", M, y); p.setDrawColor(...RED).line(M, y + 1.5, R, y + 1.5); y += 6;
+  const rows2 = [["Montant total du document (TTC)", money(docTotal)], ["Total déjà réglé, y compris ce paiement", money(dejaPaye)], ["Reste à payer", money(reste)]];
+  p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid", body: rows2, styles: { fontSize: 9.5, cellPadding: 3, lineColor: [221, 211, 211], textColor: INK },
+    columnStyles: { 1: { halign: "right" } }, didParseCell: h => { if (h.row.index === 2) { h.cell.styles.fillColor = RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
+  y = p.lastAutoTable.finalY + 6;
+  if (reste <= 0) {
+    p.setFillColor(248, 241, 241).rect(M, y, R - M, 14, "F"); p.setDrawColor(...RED).setLineWidth(0.6).rect(M, y, 1.2, 14, "F");
+    p.setFont("helvetica", "italic").setFontSize(8.5).setTextColor(...INK);
+    const t2 = p.splitTextToSize("Quittance : le présent reçu solde définitivement le document référencé, sous réserve de l'encaissement effectif des sommes.", R - M - 6);
+    p.text(t2, M + 4, y + 5.5); y += 18;
+  } else y += 6;
+  y += 6; p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
+  p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
+  if (s.signature) { const w = 42; try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY).text("Nom, date et signature", M + 100, y + 22);
+  p.setDrawColor(...RED).setLineWidth(0.5).line(M, 283, R, 283);
+  p.setFont("helvetica", "normal").setFontSize(7).setTextColor(...GREY);
+  p.text(`Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`, W / 2, 287, { align: "center" });
+  p.text(`Douala, Cameroun${s.email ? "  -  " + s.email : ""}`, W / 2, 291, { align: "center" });
+  const name = `${recu.numero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
+  const blob = p.output("blob"), file = new File([blob], name, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: recu.numero }).catch(() => p.save(name)); else p.save(name);
+}
+
 // ---------- PDF ----------
 function makePdf(d) {
   const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
@@ -610,6 +689,9 @@ const acts = {
   editContact: d => contactForm(contacts.find(c => c.id === d.id)),
   saveContact, closeSheet,
   delContact: async () => { if (confirm("Supprimer ce contact ?")) { await deleteDoc(doc(db, "contacts", edit.id)); closeSheet(); toast("Contact supprimé."); } },
+  quickDelContact: async d => { if (confirm("Supprimer ce contact ? Cette action est définitive.")) { try { await deleteDoc(doc(db, "contacts", d.id)); toast("Contact supprimé."); } catch (e) { toast("Échec : " + e.code); } } },
+  quickDelDoc: async d => { if (confirm("Supprimer ce document ? Cette action est définitive.")) { try { await deleteDoc(doc(db, "documents", d.id)); toast("Document supprimé."); } catch (e) { toast("Échec : " + e.code); } } },
+  newRecu: d => recuForm(d.id), saveRecu,
   newDoc: d => newDocFrom(d.id),
   editDoc: d => docForm(docs.find(x => x.id === d.id)),
   addLine: () => { readDocFields(); edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); },
