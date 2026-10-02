@@ -30,6 +30,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 h1,h2,h3{font-family:var(--font-serif)}
 ::selection{background:#f0d3c9}
 a{color:var(--red2)}
+button,a,select,label.btn,[data-act],.chips button,.fab,nav.bottom button,aside.side nav button,input[type=file]+label,input[type=checkbox],input[type=radio]{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.6}
 
 /* ---------- Shell ---------- */
 #app{min-height:100vh;display:flex}
@@ -209,6 +211,7 @@ const STATUTS = ["Nouveau","Devis envoyé","Relancé","Négociation","Gagné","P
 const bcls = s => "b-" + String(s).split(" ")[0];
 let user = null, route = "home", filter = "Tous", search = "";
 let contacts = [], docs = [], settings = {}, edit = null, unsub = [];
+let periode = localStorage.getItem("periode") || "mois";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -281,9 +284,59 @@ const waLink = (tel, txt) => {
   if (d.length === 9 && d[0] === "6") d = "237" + d;
   return "https://wa.me/" + d + "?text=" + encodeURIComponent(txt);
 };
+const IS_MOBILE = (() => { try { return matchMedia("(pointer:coarse)").matches; } catch (e) { return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent); } })();
+function deliverPdf(p, name, mode) {
+  if (mode === "share" && navigator.canShare) {
+    const blob = p.output("blob"), file = new File([blob], name, { type: "application/pdf" });
+    if (navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: name }).catch(() => p.save(name)); return; }
+  }
+  p.save(name);
+}
+function pdfButtons(act, id, label, extraClass) {
+  if (IS_MOBILE) return `<button class="btn sm ${extraClass || "grey"}" data-act="${act}" data-id="${id}" data-mode="download">${label}</button><button class="btn sm grey" data-act="${act}" data-id="${id}" data-mode="share">Partager</button>`;
+  return `<button class="btn sm ${extraClass || "grey"}" data-act="${act}" data-id="${id}" data-mode="download">${label}</button>`;
+}
 
-// ---------- vues ----------
-const HINTS = { home: "Vue d'ensemble de votre activité", contacts: "Suivez chaque opportunité jusqu'au paiement", docs: "Vos devis et proformas, prêts à envoyer", settings: "Vos informations, votre signature et vos données" };
+// ---------- périodes et graphiques du tableau de bord ----------
+const MOIS_COURT = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
+const PERIODES = [["jour", "Jour"], ["semaine", "Semaine"], ["mois", "Mois"], ["annee", "Année"]];
+const fmtYMD = dt => dt.toISOString().slice(0, 10);
+function periodBuckets(p) {
+  const now = new Date();
+  if (p === "jour") return [...Array(14)].map((_, i) => { const d = new Date(now); d.setDate(d.getDate() - (13 - i)); const s = fmtYMD(d); return { label: String(d.getDate()) + "/" + String(d.getMonth() + 1), start: s, end: s }; });
+  if (p === "semaine") { const out = []; for (let i = 7; i >= 0; i--) { const ref = new Date(now); ref.setDate(ref.getDate() - i * 7); const day = (ref.getDay() + 6) % 7; const mon = new Date(ref); mon.setDate(ref.getDate() - day); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); out.push({ label: String(mon.getDate()) + "/" + String(mon.getMonth() + 1), start: fmtYMD(mon), end: fmtYMD(sun) }); } return out; }
+  if (p === "mois") { const out = []; for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const end = new Date(d.getFullYear(), d.getMonth() + 1, 0); out.push({ label: MOIS_COURT[d.getMonth()], start: fmtYMD(d), end: fmtYMD(end) }); } return out; }
+  const out = []; for (let i = 4; i >= 0; i--) { const y = now.getFullYear() - i; out.push({ label: String(y), start: y + "-01-01", end: y + "-12-31" }); } return out;
+}
+const currentRange = p => periodBuckets(p).slice(-1)[0];
+function caEncaisseDans(range) { return docs.reduce((a, d) => a + (d.paiements || []).filter(x => x.date >= range.start && x.date <= range.end).reduce((s, x) => s + num(x.montant), 0), 0); }
+function docsDans(range, statut) { return docs.filter(d => (!statut || d.statut === statut) && d.date >= range.start && d.date <= range.end); }
+function miniChart(labels, bars, line) {
+  const W = 680, H = 190, padL = 42, padR = 12, padT = 14, padB = 24;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const maxBar = Math.max(1, ...bars), maxLine = Math.max(1, ...line);
+  const n = Math.max(1, labels.length), slot = innerW / n, bw = Math.min(26, slot * 0.55);
+  const cx = i => padL + slot * i + slot / 2;
+  const ybar = v => padT + innerH - (v / maxBar) * innerH;
+  const yline = v => padT + innerH - (v / maxLine) * innerH;
+  const barsSvg = bars.map((v, i) => `<rect x="${(cx(i) - bw / 2).toFixed(1)}" y="${ybar(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(innerH - (ybar(v) - padT)).toFixed(1)}" rx="3" fill="#c08a3e" fill-opacity="0.85"></rect>`).join("");
+  const pts = line.map((v, i) => `${cx(i).toFixed(1)},${yline(v).toFixed(1)}`).join(" ");
+  const dots = line.map((v, i) => `<circle cx="${cx(i).toFixed(1)}" cy="${yline(v).toFixed(1)}" r="3" fill="#5c0d0d"></circle>`).join("");
+  const labs = labels.map((l, i) => `<text x="${cx(i).toFixed(1)}" y="${H - 7}" font-size="9" fill="#6b6058" text-anchor="middle">${esc(l)}</text>`).join("");
+  const gridY = [0, .5, 1].map(f => padT + innerH * f);
+  const grid = gridY.map(y => `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#e7dcd2" stroke-width="1"></line>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;overflow:visible">${grid}${barsSvg}<polyline points="${pts}" fill="none" stroke="#5c0d0d" stroke-width="2"></polyline>${dots}${labs}</svg>
+  <div class="row" style="justify-content:center;gap:18px;margin-top:4px"><span class="muted"><span style="display:inline-block;width:10px;height:10px;background:#c08a3e;border-radius:3px;margin-right:5px;vertical-align:-1px"></span>CA encaissé</span><span class="muted"><span style="display:inline-block;width:10px;height:10px;background:#5c0d0d;border-radius:50%;margin-right:5px;vertical-align:-1px"></span>Devis acceptés</span></div>`;
+}
+function statusBars(range) {
+  const sts = ["Brouillon", "Envoyé", "Accepté", "Refusé"];
+  const colors = { Brouillon: "#6b6058", Envoyé: "#8a5a00", Accepté: "#2f6b34", Refusé: "#8a1e14" };
+  const counts = sts.map(s => docsDans(range, s).length);
+  const max = Math.max(1, ...counts);
+  return `<div style="display:flex;gap:14px;align-items:flex-end;height:110px;padding:6px 4px">${sts.map((s, i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%"><b style="color:${colors[s]}">${counts[i]}</b><div style="width:100%;max-width:38px;height:${Math.max(4, counts[i] / max * 70)}px;background:${colors[s]};border-radius:5px 5px 0 0"></div><small class="muted" style="font-size:11px">${s}</small></div>`).join("")}</div>`;
+}
+
+const HINTS = { home: "Vue d'ensemble de votre activité", contacts: "Suivez chaque opportunité jusqu'au paiement", docs: "Vos devis, proformas et factures, prêts à envoyer", settings: "Vos informations, votre signature et vos données" };
 function render() {
   if (!user) return;
   document.querySelectorAll("nav.bottom button, aside.side nav button").forEach(b => b.classList.toggle("on", b.dataset.r === route));
@@ -301,23 +354,34 @@ function render() {
 function viewHome() {
   const actifs = contacts.filter(c => !["Gagné", "Perdu", "En veille"].includes(c.statut));
   const attente = docs.filter(d => d.type === "Devis" && d.statut === "Envoyé");
-  const mois = today().slice(0, 7);
-  const gagnes = docs.filter(d => d.statut === "Accepté" && (d.date || "").startsWith(mois));
   const relances = contacts.filter(c => c.relance && c.relance <= today() && !["Gagné", "Perdu"].includes(c.statut)).sort((a, b) => a.relance.localeCompare(b.relance));
   const lb = localStorage.getItem("lastBackup");
   const old = !lb || (Date.now() - Number(lb)) > 7 * 864e5;
   const pipe = STATUTS.map(s => ({ s, n: contacts.filter(c => c.statut === s).length }));
   const max = Math.max(1, ...pipe.map(p => p.n));
+  const range = currentRange(periode);
+  const buckets = periodBuckets(periode);
+  const ca = caEncaisseDans(range);
+  const valides = docsDans(range, "Accepté");
   return `
   ${old ? `<div class="banner">Pensez à télécharger une sauvegarde de vos données (Réglages, Sauvegarde).</div>` : ""}
   <div class="grid">
     <div class="kpi"><b>${actifs.length}</b><small>Prospects actifs</small></div>
     <div class="kpi"><b>${relances.length}</b><small>À relancer</small></div>
-    <div class="kpi"><b>${money(attente.reduce((a, d) => a + totals(d).total, 0))}</b><small>${attente.length} devis en attente</small></div>
-    <div class="kpi"><b>${money(gagnes.reduce((a, d) => a + totals(d).total, 0))}</b><small>Acceptés ce mois</small></div>
+    <div class="kpi"><b>${attente.length}</b><small>Devis en attente</small></div>
+    <div class="kpi"><b>${money(attente.reduce((a, d) => a + totals(d).total, 0))}</b><small>Montant en attente</small></div>
   </div>
   <h2>À relancer</h2>
   ${relances.length ? relances.map(c => contactCard(c)).join("") : `<div class="card muted">Rien à relancer pour l'instant. Vos prospects en attente apparaîtront ici.</div>`}
+  <h2>Statistiques</h2>
+  <div class="chips">${PERIODES.map(([k, l]) => `<button class="${periode === k ? "on" : ""}" data-act="period" data-p="${k}">${l}</button>`).join("")}</div>
+  <div class="grid">
+    <div class="kpi"><b>${money(ca)}</b><small>Chiffre d'affaires encaissé — ${range.label}</small></div>
+    <div class="kpi"><b>${valides.length}</b><small>Devis / proformas acceptés — ${range.label}</small></div>
+  </div>
+  <div class="card">${miniChart(buckets.map(b => b.label), buckets.map(b => caEncaisseDans(b)), buckets.map(b => docsDans(b, "Accepté").length))}</div>
+  <h2>Documents par statut — ${range.label}</h2>
+  <div class="card">${statusBars(range)}</div>
   <h2>Pipeline</h2>
   <div class="card">${pipe.map(p => `<div class="row" style="margin:7px 0"><span style="width:104px;font-size:13px">${p.s}</span><div style="flex:1;background:var(--paper2);border-radius:6px;height:14px;overflow:hidden"><div style="width:${p.n / max * 100}%;background:linear-gradient(90deg,var(--red2),var(--gold));height:14px;border-radius:6px;transition:width .6s cubic-bezier(.2,.8,.2,1)"></div></div><b style="width:24px;text-align:right;color:var(--red-ink)">${p.n}</b></div>`).join("")}</div>`;
 }
@@ -356,12 +420,16 @@ function viewDocs() {
     <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span><span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span></div>
     <div style="margin:4px 0">${esc(d.clientNom)}${d.clientEntreprise ? " · " + esc(d.clientEntreprise) : ""}</div>
     <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>
-    ${paye > 0 ? `<div class="muted">Reçu : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b></div>` : ""}
+    ${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b></div>` : ""}
     <div class="row" style="margin-top:6px">
-      <button class="btn sm" data-act="pdf" data-id="${d.id}">PDF</button>
+      ${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}
       <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
+    </div>
+    <div class="row" style="margin-top:6px">
       ${d.type === "Devis" ? `<button class="btn sm grey" data-act="toProforma" data-id="${d.id}">→ Proforma</button>` : ""}
-      <button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Reçu</button>
+      <button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Avance / paiement</button>
+      ${reste > 0 ? `<button class="btn sm" data-act="solder" data-id="${d.id}">Solder</button>` : ""}
+      <button class="btn sm grey" data-act="facture" data-id="${d.id}">Facture</button>
     </div>
     <div class="row" style="margin-top:6px">
       <select data-change="docStatus" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(s => `<option ${d.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
@@ -449,11 +517,13 @@ function docForm(d) {
   <label>Objet</label><input id="d_objet" value="${esc(d.objet)}" placeholder="Création d'un site vitrine WordPress…">
   <label>Prestations</label><div id="lines"></div>
   <button class="btn sm alt" data-act="addLine">+ Ajouter une ligne</button>
-  <div class="grid"><div><label>Remise (FCFA)</label><input id="d_remise" inputmode="numeric" value="${esc(d.remise)}"></div><div><label>Acompte (%)</label><input id="d_acompte" inputmode="numeric" value="${esc(d.acomptePct)}"></div>
+  <div class="grid"><div><label>Remise (FCFA)</label><input id="d_remise" inputmode="numeric" value="${esc(d.remise)}"></div><div ${d.type === "Devis" ? "hidden" : ""}><label>Acompte (%)</label><input id="d_acompte" inputmode="numeric" value="${esc(d.acomptePct)}"></div>
   <div><label>Validité (jours)</label><input id="d_valid" inputmode="numeric" value="${esc(d.validite)}"></div><div><label>TVA (%)</label><input id="d_tvat" value="${esc(d.tvaTaux)}"></div></div>
   <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="d_tvaon" style="width:auto" ${d.tvaOn ? "checked" : ""}> Appliquer la TVA</label>
   <div class="tot" id="tot"></div>
-  <label>Conditions</label><textarea id="d_cond" style="min-height:110px">${esc(d.cond)}</textarea>
+  ${d.type === "Devis"
+    ? `<p class="muted" style="margin-top:12px">Un devis se limite aux prestations et au total : il ne mentionne ni acompte, ni reste à payer, ni conditions de règlement. Passez-le en Proforma pour ajouter ces éléments.</p>`
+    : `<label>Conditions</label><textarea id="d_cond" style="min-height:110px">${esc(d.cond)}</textarea>`}
   <div class="row" style="margin-top:14px"><button class="btn" data-act="saveDoc">Enregistrer</button><button class="btn alt" data-act="saveDocPdf">Enregistrer + PDF</button><button class="btn grey" data-act="closeSheet">Annuler</button></div>`);
   drawLines(); refreshTot();
 }
@@ -463,7 +533,7 @@ function drawLines() {
 function readDocFields() {
   Object.assign(edit, { type: $("#d_type").value, date: $("#d_date").value || today(), contactId: $("#d_contact").value, clientNom: $("#d_nom").value.trim(), clientEntreprise: $("#d_ent").value.trim(),
     clientTel: $("#d_tel").value.trim(), clientNiu: $("#d_niu").value.trim(), clientAdresse: $("#d_adr").value.trim(), objet: $("#d_objet").value.trim(), remise: num($("#d_remise").value),
-    acomptePct: num($("#d_acompte").value), validite: num($("#d_valid").value), tvaTaux: num($("#d_tvat").value), tvaOn: $("#d_tvaon").checked, cond: $("#d_cond").value });
+    acomptePct: $("#d_acompte") ? num($("#d_acompte").value) : 0, validite: num($("#d_valid").value), tvaTaux: num($("#d_tvat").value), tvaOn: $("#d_tvaon").checked, cond: $("#d_cond") ? $("#d_cond").value : edit.cond });
 }
 function refreshTot() {
   if (!$("#tot")) return; readDocFields(); const t = totals(edit);
@@ -526,7 +596,7 @@ async function saveRecu() {
     if (reste <= 0) setDocStatus(d.id, "Accepté");
   } catch (e) { toast("Échec : " + e.code); }
 }
-function makeRecuPdf(d, recu, docTotal, dejaPaye, reste) {
+function makeRecuPdf(d, recu, docTotal, dejaPaye, reste, mode) {
   const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
   const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
   const s = settings;
@@ -564,12 +634,114 @@ function makeRecuPdf(d, recu, docTotal, dejaPaye, reste) {
   p.text(`Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`, W / 2, 287, { align: "center" });
   p.text(`Douala, Cameroun${s.email ? "  -  " + s.email : ""}`, W / 2, 291, { align: "center" });
   const name = `${recu.numero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
-  const blob = p.output("blob"), file = new File([blob], name, { type: "application/pdf" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: recu.numero }).catch(() => p.save(name)); else p.save(name);
+  deliverPdf(p, name, mode || (IS_MOBILE ? "share" : "download"));
+}
+
+// ---------- facture définitive (document comptable) ----------
+async function ensureFactureNumero(d) {
+  if (d.factureNumero) return d.factureNumero;
+  const yr = today().slice(0, 4), cref = doc(db, "counters", "FAC-" + yr);
+  const n = await runTransaction(db, async tx => { const s = await tx.get(cref); const v = (s.exists() ? s.data().n : 0) + 1; tx.set(cref, { n: v }); return v; });
+  const numero = `FAC-${yr}-${String(n).padStart(3, "0")}`;
+  await updateDoc(doc(db, "documents", d.id), { factureNumero: numero, factureDate: today() });
+  d.factureNumero = numero; d.factureDate = today();
+  return numero;
+}
+function buildFacturePdf(d) {
+  const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
+  const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
+  const s = settings, t = totals(d);
+  const paiements = d.paiements || []; const paye = paiements.reduce((a, x) => a + num(x.montant), 0); const reste = Math.max(t.total - paye, 0);
+  try { p.addImage(LOGO, "PNG", M, 9, 22, 22); } catch (e) {}
+  p.setFont("helvetica", "bold").setFontSize(17).setTextColor(...RED).text("ENKY DESIGN", M + 26, 19);
+  p.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...GREY).text("Web  |  Design graphique  |  Formation  |  Assistance IT", M + 26, 24.5);
+  const hl = ["Douala, Cameroun", s.tel && "Tel / WhatsApp : " + s.tel, s.email].filter(Boolean);
+  hl.forEach((l, i) => p.setFontSize(8).text(l, R, 14 + i * 4.2, { align: "right" }));
+  p.setDrawColor(...RED).setLineWidth(0.9).line(M, 34, R, 34); p.setDrawColor(...INK).setLineWidth(0.2).line(M, 35.4, R, 35.4);
+  p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
+  p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text("FACTURE", M + 5, 49.5);
+  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${d.factureNumero}   |   Date : ${fdate(d.factureDate || today())}   |   Réf. : ${d.numero}`, M + 5, 54.5);
+  const box = (x, title, lines) => {
+    p.setFillColor(...RED).rect(x, 61, 88, 6, "F"); p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(9).text(title, x + 3, 65.3);
+    p.setDrawColor(221, 211, 211).setLineWidth(0.2).rect(x, 67, 88, 27);
+    p.setTextColor(...INK).setFont("helvetica", "normal").setFontSize(8.5); lines.filter(Boolean).slice(0, 6).forEach((l, i) => p.text(String(l), x + 3, 72 + i * 4.3));
+  };
+  box(M, "Prestataire", ["Enky Design", "Yannick EYINGA NGAH-KOA", "Douala, Cameroun", s.niu && "NIU : " + s.niu, s.regime && "Regime : " + s.regime, s.tel && "Tel : " + s.tel]);
+  box(M + 92, "Facture a", [d.clientNom, d.clientEntreprise, d.clientAdresse, d.clientTel && "Tel : " + d.clientTel, d.clientNiu && "NIU : " + d.clientNiu]);
+  let y = 100;
+  if (d.objet) { p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK); const o = p.splitTextToSize("Objet : " + d.objet, R - M); p.text(o, M, y); y += o.length * 4.6 + 2; }
+  p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid",
+    head: [["N°", "Designation", "Qte", "Prix unitaire (FCFA)", "Total (FCFA)"]],
+    body: d.lignes.filter(l => l.d).map((l, i) => [i + 1, l.d, l.q, money(num(l.pu)).replace(" FCFA", ""), money(num(l.q) * num(l.pu)).replace(" FCFA", "")]),
+    headStyles: { fillColor: RED, textColor: 255, fontSize: 8.5 }, styles: { fontSize: 8.5, cellPadding: 2.2, lineColor: [221, 211, 211], textColor: INK },
+    columnStyles: { 0: { cellWidth: 10, halign: "center" }, 2: { cellWidth: 14, halign: "center" }, 3: { cellWidth: 38, halign: "right" }, 4: { cellWidth: 34, halign: "right" } },
+    alternateRowStyles: { fillColor: [248, 241, 241] } });
+  y = p.lastAutoTable.finalY + 4;
+  const rows = [["Total HT", money(t.sub)]]; if (t.remise) rows.push(["Remise", "- " + money(t.remise)]);
+  if (d.tvaOn) rows.push([`TVA ${d.tvaTaux} %`, money(t.tva)]); rows.push(["TOTAL TTC", money(t.total)]);
+  p.autoTable({ startY: y, margin: { left: 110, right: M }, theme: "plain", body: rows, styles: { fontSize: 9, cellPadding: 2 }, columnStyles: { 1: { halign: "right" } },
+    didParseCell: h => { if (h.row.index === rows.length - 1 && h.section === "body") { h.cell.styles.fillColor = RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
+  y = p.lastAutoTable.finalY + 8;
+  p.setFont("helvetica", "bold").setFontSize(10).setTextColor(...RED).text("Suivi des paiements", M, y); p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.5, R, y + 1.5); y += 5;
+  if (paiements.length) {
+    p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid",
+      head: [["Date", "N° reçu", "Nature", "Mode", "Montant (FCFA)"]],
+      body: paiements.map(x => [fdate(x.date), x.numero, x.nature, x.mode, money(num(x.montant)).replace(" FCFA", "")]),
+      headStyles: { fillColor: [90, 90, 90], textColor: 255, fontSize: 8.5 }, styles: { fontSize: 8.5, cellPadding: 2.2, lineColor: [221, 211, 211], textColor: INK },
+      columnStyles: { 4: { halign: "right" } } });
+    y = p.lastAutoTable.finalY + 4;
+  } else { p.setFont("helvetica", "italic").setFontSize(9).setTextColor(...GREY).text("Aucun paiement enregistré à ce jour.", M, y); y += 8; }
+  const rows2 = [["Montant total (TTC)", money(t.total)], ["Avance et paiements verses", money(paye)], [reste <= 0 ? "SOLDE — Reste à payer" : "Reste à payer", reste <= 0 ? "0 FCFA" : money(reste)]];
+  p.autoTable({ startY: y, margin: { left: 110, right: M }, theme: "plain", body: rows2, styles: { fontSize: 9, cellPadding: 2 }, columnStyles: { 1: { halign: "right" } },
+    didParseCell: h => { if (h.row.index === 2 && h.section === "body") { h.cell.styles.fillColor = reste <= 0 ? [47, 107, 52] : RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
+  y = p.lastAutoTable.finalY + 8;
+  const block = (title, text) => {
+    if (!text) return; const lines = p.splitTextToSize(text, R - M);
+    if (y + 8 + lines.length * 4 > 268) { p.addPage(); y = 20; }
+    p.setFont("helvetica", "bold").setFontSize(10).setTextColor(...RED).text(title, M, y); p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.5, R, y + 1.5);
+    p.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(...INK).text(lines, M, y + 6); y += 9 + lines.length * 4;
+  };
+  block("Mentions legales", `Prestataire : Yannick EYINGA NGAH-KOA, exercant sous la marque Enky Design${s.niu ? " - NIU : " + s.niu : ""}.\nRetard de paiement : penalite de 2 % par mois de retard.\nLes fichiers, acces et droits d'usage sont transmis apres paiement integral de la presente facture.`);
+  if (y > 248) { p.addPage(); y = 20; }
+  y += 4; p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
+  p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
+  if (s.signature) { const h = 22, w = Math.min(50, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY).text("Nom, date et signature", M + 100, y + 24);
+  const n = p.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    p.setPage(i); p.setDrawColor(...RED).setLineWidth(0.5).line(M, 283, R, 283);
+    p.setFont("helvetica", "normal").setFontSize(7).setTextColor(...GREY);
+    p.text(`Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`, W / 2, 287, { align: "center" });
+    p.text(`Douala, Cameroun${s.email ? "  -  " + s.email : ""}  -  Page ${i} / ${n}`, W / 2, 291, { align: "center" });
+  }
+  const name = `${d.factureNumero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
+  return { p, name };
+}
+async function makeFacture(d, mode) {
+  try { await ensureFactureNumero(d); } catch (e) { toast("Échec : " + e.code); return; }
+  const { p, name } = buildFacturePdf(d);
+  deliverPdf(p, name, mode || (IS_MOBILE ? "share" : "download"));
+}
+async function solderDoc(docId) {
+  const d = docs.find(x => x.id === docId); if (!d) return;
+  const t = totals(d); const paye = (d.paiements || []).reduce((a, x) => a + num(x.montant), 0); const reste = Math.max(t.total - paye, 0);
+  if (reste <= 0) return toast("Ce document est déjà soldé.");
+  if (!confirm(`Confirmer le paiement du solde de ${money(reste)} à la date du jour ?`)) return;
+  try {
+    const date = today(), yr = date.slice(0, 4), cref = doc(db, "counters", "REC-" + yr);
+    const n = await runTransaction(db, async tx => { const s = await tx.get(cref); const v = (s.exists() ? s.data().n : 0) + 1; tx.set(cref, { n: v }); return v; });
+    const numero = `REC-${yr}-${String(n).padStart(3, "0")}`;
+    const modePaiement = (d.paiements && d.paiements.length) ? d.paiements[d.paiements.length - 1].mode : "Non précisé";
+    const paiements = [...(d.paiements || []), { numero, date, montant: reste, mode: modePaiement, nature: "Solde final" }];
+    await updateDoc(doc(db, "documents", d.id), { paiements });
+    toast("Solde réglé : " + numero);
+    await setDocStatus(d.id, "Accepté");
+    makeRecuPdf(d, { numero, date, montant: reste, mode: modePaiement, nature: "Solde final" }, t.total, t.total, 0);
+  } catch (e) { toast("Échec : " + e.code); }
 }
 
 // ---------- PDF ----------
-function makePdf(d) {
+function buildPdf(d) {
   const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
   const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
   const s = settings, t = totals(d), isPro = d.type === "Proforma";
@@ -602,11 +774,11 @@ function makePdf(d) {
     alternateRowStyles: { fillColor: [248, 241, 241] } });
   y = p.lastAutoTable.finalY + 4;
   const rows = [["Total HT", money(t.sub)]]; if (t.remise) rows.push(["Remise", "- " + money(t.remise)]);
-  if (d.tvaOn) rows.push([`TVA ${d.tvaTaux} %`, money(t.tva)]); rows.push([isPro ? "TOTAL TTC" : "TOTAL A PAYER", money(t.total)]);
-  if (num(d.acomptePct)) rows.push([`Acompte a verser (${d.acomptePct} %)`, money(t.acompte)]);
+  if (d.tvaOn) rows.push([`TVA ${d.tvaTaux} %`, money(t.tva)]); rows.push([isPro ? "TOTAL TTC" : "TOTAL", money(t.total)]);
+  if (isPro && num(d.acomptePct)) rows.push([`Acompte a verser (${d.acomptePct} %)`, money(t.acompte)]);
   if (y > 240) { p.addPage(); y = 20; }
   p.autoTable({ startY: y, margin: { left: 110, right: M }, theme: "plain", body: rows, styles: { fontSize: 9, cellPadding: 2 }, columnStyles: { 1: { halign: "right" } },
-    didParseCell: h => { if (h.row.index === (d.tvaOn ? rows.length - (num(d.acomptePct) ? 2 : 1) : rows.length - (num(d.acomptePct) ? 2 : 1)) && h.section === "body") { h.cell.styles.fillColor = RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
+    didParseCell: h => { if (h.row.index === (isPro && num(d.acomptePct) ? rows.length - 2 : rows.length - 1) && h.section === "body") { h.cell.styles.fillColor = RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
   y = p.lastAutoTable.finalY + 6;
   if (isPro) { p.setFont("helvetica", "italic").setFontSize(8.5).setTextColor(...INK); const a = p.splitTextToSize(`Arretee la presente facture proforma a la somme de : ${enLettres(t.total)} francs CFA.`, R - M); p.text(a, M, y); y += a.length * 4 + 3; }
   const block = (title, text) => {
@@ -615,9 +787,12 @@ function makePdf(d) {
     p.setFont("helvetica", "bold").setFontSize(10).setTextColor(...RED).text(title, M, y); p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.5, R, y + 1.5);
     p.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(...INK).text(lines, M, y + 6); y += 9 + lines.length * 4;
   };
-  block("Modalites de reglement", s.pay ? "Moyens de paiement : " + s.pay : "");
-  block("Conditions", d.cond);
-  if (isPro) block("Information", "Cette proforma est un document prealable : elle ne vaut pas facture. La facture definitive est emise apres paiement de l'acompte ou a la livraison.");
+  // Un devis se limite aux prestations et au total : aucune mention d'acompte, de reste ou de règlement.
+  if (isPro) {
+    block("Modalites de reglement", s.pay ? "Moyens de paiement : " + s.pay : "");
+    block("Conditions", d.cond);
+    block("Information", "Cette proforma est un document prealable : elle ne vaut pas facture. La facture definitive est emise apres paiement de l'acompte ou a la livraison.");
+  }
   if (y > 248) { p.addPage(); y = 20; }
   y += 4; p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
   p.text("Pour Enky Design", M, y); p.text('Le client ("Bon pour accord")', M + 100, y);
@@ -631,9 +806,9 @@ function makePdf(d) {
     p.text(`Douala, Cameroun${s.email ? "  -  " + s.email : ""}  -  Page ${i} / ${n}`, W / 2, 291, { align: "center" });
   }
   const name = `${d.numero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
-  const blob = p.output("blob"), file = new File([blob], name, { type: "application/pdf" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: d.numero }).catch(() => p.save(name)); else p.save(name);
+  return { p, name };
 }
+function makePdf(d, mode) { const { p, name } = buildPdf(d); deliverPdf(p, name, mode || (IS_MOBILE ? "share" : "download")); }
 
 // ---------- signature ----------
 let drawing = false, pad, pctx, hasInk = false;
@@ -684,6 +859,7 @@ async function restore(file) {
 const acts = {
   nav: (d) => { route = d.r; render(); scrollTo(0, 0); },
   filter: d => { filter = d.s; render(); },
+  period: d => { periode = d.p; localStorage.setItem("periode", periode); render(); },
   logout: () => signOut(auth),
   newContact: () => contactForm({ statut: "Nouveau", origine: "Direct" }),
   editContact: d => contactForm(contacts.find(c => c.id === d.id)),
@@ -697,7 +873,9 @@ const acts = {
   addLine: () => { readDocFields(); edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); },
   delLine: d => { edit.lignes.splice(+d.i, 1); if (!edit.lignes.length) edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); refreshTot(); },
   saveDoc: () => saveDoc(false), saveDocPdf: () => saveDoc(true),
-  pdf: d => makePdf(docs.find(x => x.id === d.id)),
+  pdf: d => makePdf(docs.find(x => x.id === d.id), d.mode),
+  facture: d => makeFacture(docs.find(x => x.id === d.id), d.mode),
+  solder: d => solderDoc(d.id),
   toProforma: d => { const s = docs.find(x => x.id === d.id); const { id, numero, createdAt, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today() }); },
   saveSettings: async () => {
     const s = { ...settings, tel: $("#s_tel").value.trim(), email: $("#s_email").value.trim(), web: $("#s_web").value.trim(), niu: $("#s_niu").value.trim(), regime: $("#s_regime").value.trim(), pay: $("#s_pay").value.trim(), cond: $("#s_cond").value, tvaTaux: num($("#s_tva").value) || 19.25 };
@@ -712,7 +890,8 @@ document.addEventListener("change", async e => {
   const t = e.target;
   if (t.dataset.change === "docStatus") setDocStatus(t.dataset.id, t.value);
   if (t.id === "d_contact") { const c = contacts.find(x => x.id === t.value); if (c) { $("#d_nom").value = c.nom || ""; $("#d_ent").value = c.entreprise || ""; $("#d_tel").value = c.tel || ""; if (!$("#d_objet").value) $("#d_objet").value = c.besoin || ""; } }
-  if (["d_type", "d_date", "d_remise", "d_acompte", "d_valid", "d_tvat", "d_tvaon"].includes(t.id)) refreshTot();
+  if (t.id === "d_type") { readDocFields(); if (edit.type === "Proforma" && !edit.cond) edit.cond = settings.cond ?? DEFAULT_COND; docForm(edit); }
+  else if (["d_date", "d_remise", "d_acompte", "d_valid", "d_tvat", "d_tvaon"].includes(t.id)) refreshTot();
   if (t.id === "sigFile" && t.files[0]) {
     const img = new Image(); img.onload = async () => { const w = Math.min(500, img.width), h = Math.round(img.height * w / img.width), c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0, w, h); try { await saveSignature(c.toDataURL("image/png"), w, h); } catch (er) { toast("Échec : " + er.code); } }; img.src = URL.createObjectURL(t.files[0]);
   }
