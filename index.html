@@ -420,7 +420,7 @@ function viewDocs() {
     <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span><span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span></div>
     <div style="margin:4px 0">${esc(d.clientNom)}${d.clientEntreprise ? " · " + esc(d.clientEntreprise) : ""}</div>
     <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>
-    ${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b></div>` : ""}
+    ${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b> · <a href="#" data-act="paiements" data-id="${d.id}">détail des paiements</a></div>` : ""}
     <div class="row" style="margin-top:6px">
       ${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}
       <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
@@ -691,10 +691,20 @@ function buildFacturePdf(d) {
       columnStyles: { 4: { halign: "right" } } });
     y = p.lastAutoTable.finalY + 4;
   } else { p.setFont("helvetica", "italic").setFontSize(9).setTextColor(...GREY).text("Aucun paiement enregistré à ce jour.", M, y); y += 8; }
+  // Le total, le solde et la signature doivent impérativement rester sur la même page :
+  // on réserve d'avance la place nécessaire (tableau du solde + bloc de signature) et on
+  // saute de page AVANT ce bloc plutôt que de risquer de le couper en deux.
+  const SIGN_BLOCK_H = 38;
+  if (y + 21 + SIGN_BLOCK_H > 272) { p.addPage(); y = 20; }
   const rows2 = [["Montant total (TTC)", money(t.total)], ["Avance et paiements verses", money(paye)], [reste <= 0 ? "SOLDE — Reste à payer" : "Reste à payer", reste <= 0 ? "0 FCFA" : money(reste)]];
   p.autoTable({ startY: y, margin: { left: 110, right: M }, theme: "plain", body: rows2, styles: { fontSize: 9, cellPadding: 2 }, columnStyles: { 1: { halign: "right" } },
     didParseCell: h => { if (h.row.index === 2 && h.section === "body") { h.cell.styles.fillColor = reste <= 0 ? [47, 107, 52] : RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
-  y = p.lastAutoTable.finalY + 8;
+  y = p.lastAutoTable.finalY + 10;
+  p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
+  p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
+  if (s.signature) { const h = 22, w = Math.min(50, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY).text("Nom, date et signature", M + 100, y + 24);
+  y += SIGN_BLOCK_H;
   const block = (title, text) => {
     if (!text) return; const lines = p.splitTextToSize(text, R - M);
     if (y + 8 + lines.length * 4 > 268) { p.addPage(); y = 20; }
@@ -702,11 +712,6 @@ function buildFacturePdf(d) {
     p.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(...INK).text(lines, M, y + 6); y += 9 + lines.length * 4;
   };
   block("Mentions legales", `Prestataire : Yannick EYINGA NGAH-KOA, exercant sous la marque Enky Design${s.niu ? " - NIU : " + s.niu : ""}.\nRetard de paiement : penalite de 2 % par mois de retard.\nLes fichiers, acces et droits d'usage sont transmis apres paiement integral de la presente facture.`);
-  if (y > 248) { p.addPage(); y = 20; }
-  y += 4; p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
-  p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
-  if (s.signature) { const h = 22, w = Math.min(50, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
-  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY).text("Nom, date et signature", M + 100, y + 24);
   const n = p.getNumberOfPages();
   for (let i = 1; i <= n; i++) {
     p.setPage(i); p.setDrawColor(...RED).setLineWidth(0.5).line(M, 283, R, 283);
@@ -721,6 +726,27 @@ async function makeFacture(d, mode) {
   try { await ensureFactureNumero(d); } catch (e) { toast("Échec : " + e.code); return; }
   const { p, name } = buildFacturePdf(d);
   deliverPdf(p, name, mode || (IS_MOBILE ? "share" : "download"));
+}
+function paiementsForm(docId) {
+  const d = docs.find(x => x.id === docId); if (!d) return;
+  const t = totals(d); const list = d.paiements || []; const paye = list.reduce((a, x) => a + num(x.montant), 0); const reste = Math.max(t.total - paye, 0);
+  edit = { docId };
+  openSheet(`<h3>Paiements — ${esc(d.numero)}</h3>
+  <p class="muted">Montant total : ${money(t.total)} · Déjà réglé : ${money(paye)} · Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b></p>
+  ${list.length ? list.map((x, i) => `<div class="row" style="border-bottom:1px solid var(--line);padding:8px 0">
+      <div style="flex:1"><b>${money(num(x.montant))}</b><div class="muted">${fdate(x.date)} · ${esc(x.nature)} · ${esc(x.mode)} · ${esc(x.numero)}</div></div>
+      <button class="btn danger sm" data-act="delPaiement" data-i="${i}">Supprimer</button>
+    </div>`).join("") : `<p class="muted">Aucun paiement enregistré.</p>`}
+  <p class="muted" style="margin-top:10px">Supprimer une ligne corrige uniquement le suivi interne : si un reçu PDF a déjà été transmis au client pour cette ligne, informez-le de l'annulation.</p>
+  <div class="row" style="margin-top:14px"><button class="btn grey" data-act="closeSheet">Fermer</button></div>`);
+}
+async function delPaiement(docId, i) {
+  const d = docs.find(x => x.id === docId); if (!d) return;
+  const list = [...(d.paiements || [])]; const removed = list.splice(+i, 1)[0];
+  if (!removed) return;
+  if (!confirm(`Supprimer ce paiement de ${money(num(removed.montant))} (${removed.numero}) ? Cette action ne peut pas être annulée.`)) return;
+  try { await updateDoc(doc(db, "documents", docId), { paiements: list }); toast("Paiement supprimé."); paiementsForm(docId); }
+  catch (e) { toast("Échec : " + e.code); }
 }
 async function solderDoc(docId) {
   const d = docs.find(x => x.id === docId); if (!d) return;
@@ -874,6 +900,8 @@ const acts = {
   delLine: d => { edit.lignes.splice(+d.i, 1); if (!edit.lignes.length) edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); refreshTot(); },
   saveDoc: () => saveDoc(false), saveDocPdf: () => saveDoc(true),
   pdf: d => makePdf(docs.find(x => x.id === d.id), d.mode),
+  paiements: d => paiementsForm(d.id),
+  delPaiement: d => delPaiement(edit.docId, d.i),
   facture: d => makeFacture(docs.find(x => x.id === d.id), d.mode),
   solder: d => solderDoc(d.id),
   toProforma: d => { const s = docs.find(x => x.id === d.id); const { id, numero, createdAt, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today() }); },
@@ -885,7 +913,7 @@ const acts = {
   sigSave: async () => { if (!hasInk) return toast("Dessinez d'abord votre signature."); try { await saveSignature(pad.toDataURL("image/png"), pad.width, pad.height); } catch (e) { toast("Échec : " + e.code); } },
   exportXlsx, backup
 };
-document.addEventListener("click", e => { const el = e.target.closest("[data-act]"); if (el && acts[el.dataset.act]) acts[el.dataset.act](el.dataset, el); });
+document.addEventListener("click", e => { const el = e.target.closest("[data-act]"); if (el && acts[el.dataset.act]) { if (el.tagName === "A") e.preventDefault(); acts[el.dataset.act](el.dataset, el); } });
 document.addEventListener("change", async e => {
   const t = e.target;
   if (t.dataset.change === "docStatus") setDocStatus(t.dataset.id, t.value);
