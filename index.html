@@ -111,11 +111,12 @@ label{display:block;font-size:12px;color:var(--grey);margin:11px 0 4px;font-weig
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#241f1c;color:#fff;padding:11px 18px;border-radius:11px;z-index:99;max-width:88%;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.3);animation:fadeIn .2s ease}
 #dlProgress{position:fixed;inset:0;z-index:120;background:rgba(36,31,28,.5);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .22s ease}
 #dlProgress.on{opacity:1}
-#dlProgress .dlp-box{background:#fffdfb;border-radius:16px;padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.3);min-width:190px;position:relative}
-#dlProgress svg{width:76px;height:76px;transform:rotate(-90deg);display:block}
+#dlProgress .dlp-box{background:#fffdfb;border-radius:16px;padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.3);min-width:190px}
+#dlProgress .dlp-ring{position:relative;width:76px;height:76px}
+#dlProgress svg{width:76px;height:76px;transform:rotate(-90deg);display:block;position:absolute;top:0;left:0}
 #dlProgress .dlp-bg{fill:none;stroke:var(--line);stroke-width:6}
 #dlProgress .dlp-bar{fill:none;stroke:var(--red2);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .1s linear}
-#dlProgress b{position:absolute;top:26px;left:0;right:0;text-align:center;font-family:var(--font-serif);font-size:17px;color:var(--red-ink)}
+#dlProgress b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:16px;color:var(--red-ink);line-height:1}
 #dlProgress span{font-size:12.5px;color:var(--grey);text-align:center;max-width:180px}
 canvas#pad{border:1.5px dashed #cfa2a2;border-radius:12px;width:100%;height:150px;touch-action:none;background:#fff}
 .banner{background:var(--warn-bg);border:1px solid #e0c07f;border-radius:12px;padding:11px 13px;margin-bottom:12px;font-size:13.5px;color:#5c4200}
@@ -309,7 +310,7 @@ function showProgress(label) {
   let el = document.getElementById("dlProgress");
   if (!el) {
     el = document.createElement("div"); el.id = "dlProgress";
-    el.innerHTML = `<div class="dlp-box"><svg viewBox="0 0 64 64"><circle class="dlp-bg" cx="32" cy="32" r="27"></circle><circle class="dlp-bar" cx="32" cy="32" r="27"></circle></svg><b id="dlpPct">0%</b><span id="dlpLabel"></span></div>`;
+    el.innerHTML = `<div class="dlp-box"><div class="dlp-ring"><svg viewBox="0 0 64 64"><circle class="dlp-bg" cx="32" cy="32" r="27"></circle><circle class="dlp-bar" cx="32" cy="32" r="27"></circle></svg><b id="dlpPct">0%</b></div><span id="dlpLabel"></span></div>`;
     document.body.appendChild(el);
   }
   el.querySelector("#dlpLabel").textContent = label;
@@ -360,8 +361,10 @@ function periodBuckets(p) {
   const out = []; for (let i = 4; i >= 0; i--) { const y = now.getFullYear() - i; out.push({ label: String(y), start: y + "-01-01", end: y + "-12-31" }); } return out;
 }
 const currentRange = p => periodBuckets(p).slice(-1)[0];
-function caEncaisseDans(range) { return docs.reduce((a, d) => a + (d.paiements || []).filter(x => x.date >= range.start && x.date <= range.end).reduce((s, x) => s + num(x.montant), 0), 0); }
-function docsDans(range, statut) { return docs.filter(d => (!statut || d.statut === statut) && d.date >= range.start && d.date <= range.end); }
+// un devis transformé en proforma (ou une proforma transformée en facture) reste visible pour
+// l'historique, mais ne doit plus jamais compter dans les totaux : c'est la même vente, pas une nouvelle
+function caEncaisseDans(range) { return docs.filter(d => !d.supersededBy).reduce((a, d) => a + (d.paiements || []).filter(x => x.date >= range.start && x.date <= range.end).reduce((s, x) => s + num(x.montant), 0), 0); }
+function docsDans(range, statut) { return docs.filter(d => !d.supersededBy && (!statut || d.statut === statut) && d.date >= range.start && d.date <= range.end); }
 function miniChart(labels, bars, line) {
   const W = 680, H = 190, padL = 42, padR = 12, padT = 14, padB = 24;
   const innerW = W - padL - padR, innerH = H - padT - padB;
@@ -467,11 +470,17 @@ function viewContacts() {
 }
 function viewDocs() {
   const list = [...docs].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  return (list.length ? list.map(d => { const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0); return `<div class="card">
-    <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span><span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span></div>
+  return (list.length ? list.map(d => {
+    const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0);
+    const succ = d.supersededBy ? docs.find(x => x.id === d.supersededBy) : null;
+    return `<div class="card" style="${d.supersededBy ? "opacity:.6" : ""}">
+    <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span>${d.supersededBy ? `<span class="badge">Remplacé</span>` : `<span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span>`}</div>
     <div style="margin:4px 0">${esc(d.clientNom)}${d.clientEntreprise ? " · " + esc(d.clientEntreprise) : ""}</div>
     <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>
-    ${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b> · <a href="#" data-act="paiements" data-id="${d.id}">détail des paiements</a></div>` : ""}
+    ${d.supersededBy
+      ? `<div class="muted">Transformé en ${succ ? esc(succ.numero) : "document suivant"} — ne compte plus dans les statistiques.</div>
+         <div class="row" style="margin-top:6px">${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}<button class="btn sm danger" data-act="quickDelDoc" data-id="${d.id}" title="Supprimer ce document">🗑</button></div>`
+      : `${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b> · <a href="#" data-act="paiements" data-id="${d.id}">détail des paiements</a></div>` : ""}
     <div class="row" style="margin-top:6px">
       ${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}
       <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
@@ -480,13 +489,14 @@ function viewDocs() {
       ${d.type === "Devis" ? `<button class="btn sm grey" data-act="toProforma" data-id="${d.id}">→ Proforma</button>` : ""}
       <button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Avance / paiement</button>
       ${reste > 0 ? `<button class="btn sm" data-act="solder" data-id="${d.id}">Solder</button>` : ""}
-      <button class="btn sm grey" data-act="facture" data-id="${d.id}">Facture</button>
     </div>
     <div class="row" style="margin-top:6px">
-      <select data-change="docStatus" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(s => `<option ${d.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+      ${pdfButtons("facture", d.id, "Facture", "")}
       <span class="sp"></span>
+      <select data-change="docStatus" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(s => `<option ${d.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
       <button class="btn sm danger" data-act="quickDelDoc" data-id="${d.id}" title="Supprimer ce document">🗑</button>
-    </div></div>`; }).join("") : `<div class="card muted">Aucun document pour l'instant. Appuyez sur + pour créer un devis ou une proforma.</div>`)
+    </div>`}
+    </div>`; }).join("") : `<div class="card muted">Aucun document pour l'instant. Appuyez sur + pour créer un devis ou une proforma.</div>`)
     + `<button class="fab" data-act="newDoc" title="Nouveau document">+</button>`;
 }
 function viewSettings() {
@@ -595,7 +605,7 @@ async function saveDoc(thenPdf) {
   readDocFields();
   if (!edit.clientNom) return toast("Indiquez le nom du client.");
   if (!edit.lignes.some(l => l.d && num(l.pu))) return toast("Ajoutez au moins une prestation avec un prix.");
-  const d = { ...edit }; const id = d.id; delete d.id;
+  const d = { ...edit }; const id = d.id; delete d.id; const sourceId = d._sourceId; delete d._sourceId;
   try {
     if (!id) {
       const prefix = d.type === "Devis" ? "DEV" : "PRO", yr = d.date.slice(0, 4);
@@ -603,6 +613,9 @@ async function saveDoc(thenPdf) {
       const n = await runTransaction(db, async tx => { const s = await tx.get(cref); const v = (s.exists() ? s.data().n : 0) + 1; tx.set(cref, { n: v }); return v; });
       d.numero = `${prefix}-${yr}-${String(n).padStart(3, "0")}`; d.createdAt = Date.now();
       const ref = await addDoc(collection(db, "documents"), d); d.id = ref.id;
+      // le document d'origine (devis → proforma) est conservé pour l'historique, mais ne compte
+      // plus seul : c'est la même vente qui a simplement changé d'étape.
+      if (sourceId) await updateDoc(doc(db, "documents", sourceId), { supersededBy: d.id });
     } else { await setDoc(doc(db, "documents", id), d); d.id = id; }
     closeSheet(); toast("Document enregistré : " + d.numero);
     if (thenPdf) makePdf(d);
@@ -644,7 +657,7 @@ async function saveRecu() {
     await updateDoc(doc(db, "documents", d.id), { paiements });
     const t = totals(d); const dejaPaye = paiements.reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - dejaPaye, 0);
     closeSheet(); toast("Reçu généré : " + numero);
-    makeRecuPdf(d, { numero, date, montant, mode, nature }, t.total, dejaPaye, reste);
+    makeRecuPdf(d, { numero, date, montant, mode, nature }, t.total, dejaPaye, reste, "download");
     if (reste <= 0) setDocStatus(d.id, "Accepté");
   } catch (e) { toast("Échec : " + e.code); }
 }
@@ -652,16 +665,11 @@ function makeRecuPdf(d, recu, docTotal, dejaPaye, reste, mode) {
   const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
   const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
   const s = settings;
-  try { p.addImage(LOGO, "PNG", M, 9, 22, 22); } catch (e) {}
-  p.setFont("helvetica", "bold").setFontSize(17).setTextColor(...RED).text("ENKY DESIGN", M + 26, 19);
-  p.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...GREY).text("Web  |  Design graphique  |  Formation  |  Assistance IT", M + 26, 24.5);
-  const hl = ["Douala, Cameroun", s.tel && "Tel / WhatsApp : " + s.tel, s.email].filter(Boolean);
-  hl.forEach((l, i) => p.setFontSize(8).text(l, R, 14 + i * 4.2, { align: "right" }));
-  p.setDrawColor(...RED).setLineWidth(0.9).line(M, 34, R, 34); p.setDrawColor(...INK).setLineWidth(0.2).line(M, 35.4, R, 35.4);
+  pdfHeader(p, RED, INK, GREY, M, R);
   p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
   p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text("REÇU DE PAIEMENT", M + 5, 49.5);
   p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${recu.numero}   |   Date : ${fdate(recu.date)}`, M + 5, 54.5);
-  let y = 68;
+  let y = 65;
   const rows1 = [["Reçu de", d.clientNom + (d.clientEntreprise ? " (" + d.clientEntreprise + ")" : "")], ["La somme de", money(recu.montant)], ["En lettres", enLettres(recu.montant) + " francs CFA"], ["Mode de paiement", recu.mode], ["Nature du paiement", recu.nature], ["Document concerné", d.numero + " — " + (d.objet || "")]];
   p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid", body: rows1,
     styles: { fontSize: 9.5, cellPadding: 3, lineColor: [221, 211, 211], textColor: INK }, columnStyles: { 0: { cellWidth: 48, fillColor: [248, 241, 241], fontStyle: "bold" } } });
@@ -677,14 +685,15 @@ function makeRecuPdf(d, recu, docTotal, dejaPaye, reste, mode) {
     const t2 = p.splitTextToSize("Quittance : le présent reçu solde définitivement le document référencé, sous réserve de l'encaissement effectif des sommes.", R - M - 6);
     p.text(t2, M + 4, y + 5.5); y += 18;
   } else y += 6;
-  y += 6; p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
+  y += 6;
+  p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
   p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
-  if (s.signature) { const w = 42; try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
-  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY).text("Nom, date et signature", M + 100, y + 22);
-  p.setDrawColor(...RED).setLineWidth(0.5).line(M, 283, R, 283);
-  p.setFont("helvetica", "normal").setFontSize(7).setTextColor(...GREY);
-  p.text(`Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`, W / 2, 287, { align: "center" });
-  p.text(`Douala, Cameroun${s.email ? "  -  " + s.email : ""}`, W / 2, 291, { align: "center" });
+  if (s.signature) { const h = 18, w = Math.min(40, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY);
+  p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, y + 5.5);
+  p.text(`Date : ${fdate(recu.date)}`, M + 100, y + 10);
+  p.text("Signature :", M + 100, y + 14.5);
+  pdfFooter(p, s, GREY, RED, W, M, R, `Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`);
   const name = `${recu.numero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
   deliverPdf(p, name, mode || (IS_MOBILE ? "share" : "download"), "Génération du reçu en cours…");
 }
@@ -742,21 +751,26 @@ function buildFacturePdfAtScale(d, scale) {
     didParseCell: h => { if (h.row.index === 2 && h.section === "body") { h.cell.styles.fillColor = reste <= 0 ? [47, 107, 52] : RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
   y = p.lastAutoTable.finalY + gp(9);
   const sigY = y;
+  const imgH = gp(18), imgW = Math.min(gp(40), imgH * (s.sigW || 2) / (s.sigH || 1));
   p.setFont("helvetica", "bold").setFontSize(fs(9.5)).setTextColor(...INK);
   p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
-  if (s.signature) { const h = gp(20), w = Math.min(gp(46), h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + gp(2), w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  if (s.signature) { try { p.addImage(s.signature, "PNG", M, y + gp(2), imgW, imgW * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
   p.setFont("helvetica", "normal").setFontSize(fs(8)).setTextColor(...GREY);
   p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, y + gp(5.5));
   p.text(`Date : ${fdate(d.factureDate || today())}`, M + 100, y + gp(10));
   p.text("Signature :", M + 100, y + gp(14.5));
-  y = sigY + gp(22);
+  // Réserve fixe (non réduite) après la signature : l'image ne doit jamais toucher les mentions légales.
+  y = sigY + Math.max(imgH + 2, gp(14.5) + 4) + 6;
+  // Mentions légales : toujours en petite police, indépendamment du reste du document.
   const mentions = `Prestataire : Yannick EYINGA NGAH-KOA, exercant sous la marque Enky Design${s.niu ? " - NIU : " + s.niu : ""}.\nRetard de paiement : penalite de 2 % par mois de retard.\nLes fichiers, acces et droits d'usage sont transmis apres paiement integral de la presente facture.`;
-  p.setFontSize(fs(8.5)); const mlines = p.splitTextToSize(mentions, R - M);
-  p.setFont("helvetica", "bold").setFontSize(fs(10)).setTextColor(...RED).text("Mentions legales", M, y); p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.3, R, y + 1.3);
-  p.setFont("helvetica", "normal").setFontSize(fs(8.5)).setTextColor(...INK).text(mlines, M, y + gp(5.5)); y += gp(5.5) + mlines.length * fs(8.5) * 0.46;
+  const MFS = 6.8; p.setFontSize(MFS); const mlines = p.splitTextToSize(mentions, R - M);
+  p.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(...RED).text("Mentions legales", M, y);
+  p.setDrawColor(...RED).setLineWidth(0.3).line(M, y + 1, R, y + 1);
+  p.setFont("helvetica", "normal").setFontSize(MFS).setTextColor(...INK).text(mlines, M, y + 4.2);
+  y += 4.2 + mlines.length * (MFS * 0.44);
   pdfFooter(p, s, GREY, RED, W, M, R, `Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`);
   const name = `${d.factureNumero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
-  return { p, name, fits: p.getNumberOfPages() === 1 && y < 280 };
+  return { p, name, fits: p.getNumberOfPages() === 1 && y < 278 };
 }
 function buildFacturePdf(d) {
   for (const scale of [1, 0.88, 0.76, 0.65, 0.56]) {
@@ -804,7 +818,7 @@ async function solderDoc(docId) {
     await updateDoc(doc(db, "documents", d.id), { paiements });
     toast("Solde réglé : " + numero);
     await setDocStatus(d.id, "Accepté");
-    makeRecuPdf(d, { numero, date, montant: reste, mode: modePaiement, nature: "Solde final" }, t.total, t.total, 0);
+    makeRecuPdf(d, { numero, date, montant: reste, mode: modePaiement, nature: "Solde final" }, t.total, t.total, 0, "download");
   } catch (e) { toast("Échec : " + e.code); }
 }
 
@@ -816,14 +830,25 @@ function pdfHeader(p, RED, INK, GREY, M, R) {
   p.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...GREY).text("Web  |  Design graphique  |  Formation  |  Assistance IT", M + 26, 24.5);
   p.setDrawColor(...RED).setLineWidth(0.9).line(M, 34, R, 34); p.setDrawColor(...INK).setLineWidth(0.2).line(M, 35.4, R, 35.4);
 }
+// pied de page inspiré d'un papier à en-tête imprime : identite sur une ligne, puis une rangee
+// de coordonnees ponctuees d'une petite puce ronde avant chaque élément (pas de filet horizontal)
 function pdfFooter(p, s, GREY, RED, W, M, R, niuLine) {
   const n = p.getNumberOfPages();
-  const l2 = [s.ville || "Douala, Cameroun", s.tel && "Tel : " + s.tel, s.web, s.email].filter(Boolean).join("  •  ");
+  const items = [s.ville || "Douala, Cameroun", s.tel && "Tel : " + s.tel, s.web, s.email].filter(Boolean);
   for (let i = 1; i <= n; i++) {
-    p.setPage(i); p.setDrawColor(...RED).setLineWidth(0.5).line(M, 283, R, 283);
-    p.setFont("helvetica", "normal").setFontSize(7).setTextColor(...GREY);
-    p.text(niuLine, W / 2, 287, { align: "center" });
-    p.text(`${l2}  •  Page ${i} / ${n}`, W / 2, 291, { align: "center" });
+    p.setPage(i);
+    p.setFont("helvetica", "normal").setFontSize(7.2).setTextColor(...GREY);
+    p.text(niuLine, W / 2, 285, { align: "center" });
+    const widths = items.map(it => p.getTextWidth(it));
+    const gap = 5.5, bullet = 2.2;
+    const total = widths.reduce((a, w) => a + w, 0) + (items.length - 1) * gap + items.length * bullet;
+    let x = W / 2 - total / 2;
+    items.forEach((it, idx) => {
+      p.setFillColor(...RED); p.circle(x + bullet / 2, 288.3, 0.55, "F");
+      p.setTextColor(...GREY).text(it, x + bullet + 0.8, 289);
+      x += bullet + 0.8 + widths[idx] + gap;
+    });
+    p.setFont("helvetica", "normal").setFontSize(7).setTextColor(170, 160, 155).text(`Page ${i} / ${n}`, W / 2, 293, { align: "center" });
   }
 }
 // zone prestataire / client identiques : Entreprise, Nom, Ville, NIU, Telephone
@@ -850,7 +875,6 @@ function buildPdf(d) {
   const { jsPDF } = window.jspdf; const p = new jsPDF({ unit: "mm", format: "a4" });
   const RED = [173, 23, 23], INK = [43, 43, 43], GREY = [107, 107, 107], W = 210, M = 15, R = W - M;
   const s = settings, t = totals(d), isPro = d.type === "Proforma";
-  const SIGN_Y = 262, FOOT_LIMIT = 253; // position fixe de la signature : elle ne bouge jamais
   pdfHeader(p, RED, INK, GREY, M, R);
   p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
   p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text(isPro ? "FACTURE PROFORMA" : "DEVIS", M + 5, 49.5);
@@ -870,39 +894,40 @@ function buildPdf(d) {
   if (isPro && num(d.acomptePct)) rows.push([`Acompte a verser (${d.acomptePct} %)`, money(t.acompte)]);
   p.autoTable({ startY: y, margin: { left: 110, right: M }, theme: "plain", body: rows, styles: { fontSize: 9, cellPadding: 2 }, columnStyles: { 1: { halign: "right" } },
     didParseCell: h => { if (h.row.index === (isPro && num(d.acomptePct) ? rows.length - 2 : rows.length - 1) && h.section === "body") { h.cell.styles.fillColor = RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
-  y = p.lastAutoTable.finalY + 6;
+  y = p.lastAutoTable.finalY + 7;
   // Un devis se limite aux prestations et au total : aucune mention d'acompte, de reste ou de règlement.
   if (isPro) {
-    const lettres = `Arretee la presente facture proforma a la somme de : ${enLettres(t.total)} francs CFA.`;
+    p.setFont("helvetica", "italic").setFontSize(8.5).setTextColor(...INK);
+    const lettres = p.splitTextToSize(`Arretee la presente facture proforma a la somme de : ${enLettres(t.total)} francs CFA.`, R - M);
+    p.text(lettres, M, y); y += lettres.length * 4 + 3;
+  }
+  // La signature suit immediatement le total (et le montant en lettres pour la proforma) :
+  // c'est le montant qu'elle engage, pas les conditions, qui doit se trouver juste au-dessus.
+  const SIGN_H = 24; // réserve fixe (texte + image de signature) avant le contenu suivant
+  const sigY = y + 6;
+  p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
+  p.text("Pour Enky Design", M, sigY); p.text('Le client ("Bon pour accord")', M + 100, sigY);
+  if (s.signature) { const h = 18, w = Math.min(42, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, sigY + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY);
+  p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, sigY + 5.5);
+  p.text(`Date : ${fdate(d.date)}`, M + 100, sigY + 10);
+  p.text("Signature :", M + 100, sigY + 14.5);
+  y = sigY + SIGN_H;
+  // Modalités de règlement, conditions et informations : après la signature, en petite police.
+  if (isPro) {
     const blocks = [
-      { title: null, text: lettres, italic: true },
       { title: "Modalites de reglement", text: s.pay ? "Moyens de paiement : " + s.pay : "" },
       { title: "Conditions", text: d.cond },
       { title: "Information", text: "Cette proforma est un document prealable : elle ne vaut pas facture. La facture definitive est emise apres paiement de l'acompte ou a la livraison." },
-    ];
-    const scale = fitBlocksScale(p, blocks.filter(b => b.text), FOOT_LIMIT - y, R, M);
+    ].filter(b => b.text);
+    const scale = fitBlocksScale(p, blocks, 275 - y, R, M);
     blocks.forEach(b => {
-      if (!b.text) return;
       p.setFontSize(scale); const lines = p.splitTextToSize(b.text, R - M);
-      if (b.title) {
-        p.setFont("helvetica", "bold").setFontSize(Math.max(scale + 1, 8)).setTextColor(...RED).text(b.title, M, y);
-        p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.3, R, y + 1.3); y += 5.5;
-        p.setFont("helvetica", "normal").setFontSize(scale).setTextColor(...INK).text(lines, M, y); y += lines.length * (scale * 0.46) + 3.5;
-      } else {
-        p.setFont("helvetica", "italic").setFontSize(scale).setTextColor(...INK).text(lines, M, y); y += lines.length * (scale * 0.46) + 3.5;
-      }
+      p.setFont("helvetica", "bold").setFontSize(Math.max(scale + 0.5, 7)).setTextColor(...RED).text(b.title, M, y);
+      p.setDrawColor(...RED).setLineWidth(0.4).line(M, y + 1.2, R, y + 1.2); y += 4.6;
+      p.setFont("helvetica", "normal").setFontSize(scale).setTextColor(...INK).text(lines, M, y); y += lines.length * (scale * 0.44) + 3;
     });
   }
-  // cas extrême (très nombreuses prestations ou texte de conditions impossible à compresser) :
-  // on bascule la signature sur une nouvelle page plutôt que de la superposer au contenu
-  if (y > SIGN_Y) { p.addPage(); y = SIGN_Y; } else y = SIGN_Y;
-  p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
-  p.text("Pour Enky Design", M, y); p.text('Le client ("Bon pour accord")', M + 100, y);
-  if (s.signature) { const h = 22, w = Math.min(50, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
-  p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY);
-  p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, y + 6);
-  p.text(`Date : ${fdate(d.date)}`, M + 100, y + 11);
-  p.text("Signature :", M + 100, y + 16);
   pdfFooter(p, s, GREY, RED, W, M, R, `Enky Design - Yannick EYINGA NGAH-KOA - Prestataire digital independant${s.niu ? " - NIU : " + s.niu : ""}`);
   const name = `${d.numero}_${(d.clientNom || "client").replace(/[^\w]+/g, "_")}.pdf`;
   return { p, name };
@@ -977,7 +1002,7 @@ const acts = {
   delPaiement: d => delPaiement(edit.docId, d.i),
   facture: d => makeFacture(docs.find(x => x.id === d.id), d.mode),
   solder: d => solderDoc(d.id),
-  toProforma: d => { const s = docs.find(x => x.id === d.id); const { id, numero, createdAt, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today() }); },
+  toProforma: d => { const s = docs.find(x => x.id === d.id); const { id, numero, createdAt, supersededBy, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today(), paiements: s.paiements || [], _sourceId: s.id }); },
   saveSettings: async () => {
     const s = { ...settings, ville: $("#s_ville").value.trim(), tel: $("#s_tel").value.trim(), email: $("#s_email").value.trim(), web: $("#s_web").value.trim(), niu: $("#s_niu").value.trim(), regime: $("#s_regime").value.trim(), pay: $("#s_pay").value.trim(), cond: $("#s_cond").value, tvaTaux: num($("#s_tva").value) || 19.25 };
     try { await setDoc(doc(db, "settings", "main"), s); toast("Réglages enregistrés."); } catch (e) { toast("Échec : " + e.code); }
