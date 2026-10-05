@@ -668,7 +668,8 @@ function makeRecuPdf(d, recu, docTotal, dejaPaye, reste, mode) {
   pdfHeader(p, RED, INK, GREY, M, R);
   p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
   p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text("REÇU DE PAIEMENT", M + 5, 49.5);
-  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${recu.numero}   |   Date : ${fdate(recu.date)}`, M + 5, 54.5);
+  const recuNow = new Date(); const recuHH = String(recuNow.getHours()).padStart(2, "0") + ":" + String(recuNow.getMinutes()).padStart(2, "0");
+  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${recu.numero}   |   Date : ${fdate(recu.date)} a ${recuHH}`, M + 5, 54.5);
   let y = 65;
   const rows1 = [["Reçu de", d.clientNom + (d.clientEntreprise ? " (" + d.clientEntreprise + ")" : "")], ["La somme de", money(recu.montant)], ["En lettres", enLettres(recu.montant) + " francs CFA"], ["Mode de paiement", recu.mode], ["Nature du paiement", recu.nature], ["Document concerné", d.numero + " — " + (d.objet || "")]];
   p.autoTable({ startY: y, margin: { left: M, right: M }, theme: "grid", body: rows1,
@@ -688,7 +689,7 @@ function makeRecuPdf(d, recu, docTotal, dejaPaye, reste, mode) {
   y += 6;
   p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
   p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
-  if (s.signature) { const h = 18, w = Math.min(40, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  if (s.signature) { const h = 24, w = Math.min(52, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, y + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
   p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY);
   p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, y + 5.5);
   p.text(`Date : ${fdate(recu.date)}`, M + 100, y + 10);
@@ -751,7 +752,7 @@ function buildFacturePdfAtScale(d, scale) {
     didParseCell: h => { if (h.row.index === 2 && h.section === "body") { h.cell.styles.fillColor = reste <= 0 ? [47, 107, 52] : RED; h.cell.styles.textColor = 255; h.cell.styles.fontStyle = "bold"; } } });
   y = p.lastAutoTable.finalY + gp(9);
   const sigY = y;
-  const imgH = gp(18), imgW = Math.min(gp(40), imgH * (s.sigW || 2) / (s.sigH || 1));
+  const imgH = gp(24), imgW = Math.min(gp(52), imgH * (s.sigW || 2) / (s.sigH || 1));
   p.setFont("helvetica", "bold").setFontSize(fs(9.5)).setTextColor(...INK);
   p.text("Pour Enky Design", M, y); p.text("Le client", M + 100, y);
   if (s.signature) { try { p.addImage(s.signature, "PNG", M, y + gp(2), imgW, imgW * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
@@ -878,7 +879,8 @@ function buildPdf(d) {
   pdfHeader(p, RED, INK, GREY, M, R);
   p.setFillColor(...RED).rect(M, 40, R - M, 17, "F");
   p.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(18).text(isPro ? "FACTURE PROFORMA" : "DEVIS", M + 5, 49.5);
-  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${d.numero}   |   Date : ${fdate(d.date)}${d.validite ? "   |   Valable " + d.validite + " jours" : ""}`, M + 5, 54.5);
+  const genNow = new Date(); const genHH = String(genNow.getHours()).padStart(2, "0") + ":" + String(genNow.getMinutes()).padStart(2, "0");
+  p.setFont("helvetica", "normal").setFontSize(9).text(`N° ${d.numero}   |   Date : ${fdate(d.date)} a ${genHH}${d.validite ? "   |   Valable " + d.validite + " jours" : ""}`, M + 5, 54.5);
   pdfPartyBoxes(p, RED, INK, s, d, M, R);
   let y = 100;
   if (d.objet) { p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK); const o = p.splitTextToSize("Objet : " + d.objet, R - M); p.text(o, M, y); y += o.length * 4.6 + 2; }
@@ -903,11 +905,11 @@ function buildPdf(d) {
   }
   // La signature suit immediatement le total (et le montant en lettres pour la proforma) :
   // c'est le montant qu'elle engage, pas les conditions, qui doit se trouver juste au-dessus.
-  const SIGN_H = 24; // réserve fixe (texte + image de signature) avant le contenu suivant
+  const SIGN_H = 30; // réserve fixe (texte + image de signature) avant le contenu suivant
   const sigY = y + 6;
   p.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(...INK);
   p.text("Pour Enky Design", M, sigY); p.text('Le client ("Bon pour accord")', M + 100, sigY);
-  if (s.signature) { const h = 18, w = Math.min(42, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, sigY + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
+  if (s.signature) { const h = 24, w = Math.min(52, h * (s.sigW || 2) / (s.sigH || 1)); try { p.addImage(s.signature, "PNG", M, sigY + 2, w, w * (s.sigH || 1) / (s.sigW || 2)); } catch (e) {} }
   p.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GREY);
   p.text(`Nom : ${d.clientNom || "……………………"}`, M + 100, sigY + 5.5);
   p.text(`Date : ${fdate(d.date)}`, M + 100, sigY + 10);
