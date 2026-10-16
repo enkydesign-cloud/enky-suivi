@@ -240,6 +240,21 @@ input[type="checkbox"]:focus-visible,input[type="radio"]:focus-visible{outline:n
 .locked{display:flex;gap:9px;align-items:flex-start;margin-top:8px;padding:9px 11px;border-radius:10px;background:var(--bad-bg);color:var(--bad);font-size:12.5px;line-height:1.35}
 .locked .ic{width:17px;height:17px;flex-shrink:0;margin-top:1px;stroke-width:2.1}
 .typ{font-size:11.5px;font-weight:600;color:var(--grey);padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+#layer.center{align-items:center;padding:18px}
+#layer.center .lp{border-radius:22px;max-width:410px;animation:popIn .28s cubic-bezier(.2,.9,.25,1.15)}
+@keyframes popIn{from{opacity:0;transform:scale(.92) translateY(10px)}to{opacity:1;transform:none}}
+.greet .gh{margin:-16px -14px 0;padding:28px 18px 22px;border-radius:22px 22px 0 0;background:linear-gradient(150deg,#3d0a0a,#7a1010 55%,#140404);color:#fff;text-align:center}
+.greet .gi{width:64px;height:64px;border-radius:50%;margin:0 auto 12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;animation:gPulse 2.4s ease-in-out infinite}
+.greet .gi .ic{width:32px;height:32px;stroke:#fff;stroke-width:1.7}
+@keyframes gPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.28)}50%{box-shadow:0 0 0 12px rgba(255,255,255,0)}}
+.greet .gh h3{margin:0;color:#fff;font-size:25px}
+.greet .gh p{margin:6px 0 0;opacity:.88;font-size:14px}
+.gl{list-style:none;margin:12px 2px 0;padding:0}
+.gl li{display:flex;gap:11px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.gl li:last-child{border-bottom:0}
+.gl li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);flex-shrink:0}
+.chkrow{display:flex;gap:11px;align-items:flex-start;margin-top:14px;font-size:14px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0;cursor:pointer}
+.chkrow input{margin-top:1px}
 /* ---------- Cards, KPI ---------- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow);transition:transform .18s ease,box-shadow .18s ease}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -428,6 +443,8 @@ const loadScript = src => new Promise((ok, ko) => { const el = document.createEl
 const libs = {};
 const needPdf = () => libs.pdf || (libs.pdf = loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js").then(() => loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js")).catch(e => { libs.pdf = null; throw e; }));
 const needXls = () => libs.xls || (libs.xls = loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js").catch(e => { libs.xls = null; throw e; }));
+const dataLoaded = { c: false, d: false };
+let welcomeRan = false;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 let db;
@@ -485,15 +502,16 @@ function enLettres(n) {
 onAuthStateChanged(auth, u => {
   user = u;
   unsub.forEach(f => f()); unsub = [];
-  if (!u) { $("#app").hidden = true; $("#login").hidden = false; window.__hideSplash(); return; }
+  if (!u) { $("#app").hidden = true; $("#login").hidden = false; welcomeRan = false; dataLoaded.c = dataLoaded.d = false; try { sessionStorage.removeItem("greeted"); } catch (e) {} window.__hideSplash(); return; }
   $("#login").hidden = true; $("#app").hidden = false;
   initHistory();
   const err = e => toast("Erreur de synchronisation : " + e.code);
-  unsub.push(onSnapshot(collection(db, "contacts"), s => { contacts = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, err));
-  unsub.push(onSnapshot(collection(db, "documents"), s => { docs = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, err));
+  unsub.push(onSnapshot(collection(db, "contacts"), s => { contacts = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.c = true; render(); }, err));
+  unsub.push(onSnapshot(collection(db, "documents"), s => { docs = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.d = true; render(); }, err));
   unsub.push(onSnapshot(doc(db, "settings", "main"), s => { settings = s.exists() ? s.data() : {}; try { localStorage.setItem("slogan", settings.slogan ?? DEFAULT_SLOGAN); } catch (e) {} render(); }, err));
   render();
   window.__hideSplash();
+  startWelcome();
   setTimeout(() => needPdf().catch(() => {}), 2500);
 });
 $("#loginSlogan").textContent = localStorage.getItem("slogan") ?? DEFAULT_SLOGAN;
@@ -871,6 +889,117 @@ function encaissementPicker() {
   <label>Document</label><select id="p_doc">${opts.map(x => `<option value="${x.d.id}">${esc(x.d.numero)} — ${esc(x.d.clientNom || "Client")} — reste ${money(x.reste)}</option>`).join("")}</select>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="pickDoc">Continuer</button><button class="btn grey" data-act="closeSheet">Annuler</button></div>`);
 }
+// ---------- accueil : salutation + règle d'inactivité ----------
+const AGENCE = "Enky Design", PROMO_COUNT = 4;
+let promoIdx = +(localStorage.getItem("promoIdx") || 0), promoIdle = 0, promoIsAuto = false;
+const startOfDay = ts => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+function lastEntryTs() {
+  let m = 0;
+  contacts.forEach(c => { if (c.createdAt) m = Math.max(m, c.createdAt); });
+  docs.forEach(d => { if (d.createdAt) m = Math.max(m, d.createdAt); (d.paiements || []).forEach(p => { if (p.date) m = Math.max(m, parseYMD(p.date).getTime() + 12 * 3600e3); }); });
+  return m;
+}
+const daysIdle = () => { const l = lastEntryTs(); return l ? Math.round((startOfDay(Date.now()) - startOfDay(l)) / 86400000) : 0; };
+function greetingParts() {
+  const h = new Date().getHours();
+  if (h >= 18 || h < 4) return { hello: "Bonsoir", sub: "Bonne soirée !", icon: "moon", soir: true };
+  if (h < 12) return { hello: "Bonjour", sub: "Belle matinée et bonne journée de travail !", icon: "sun" };
+  return { hello: "Bonjour", sub: "Bon après-midi !", icon: "sun" };
+}
+const plur = (n, a, b) => n + " " + (n > 1 ? b : a);
+function showGreeting(cb) {
+  const g = greetingParts(), nom = String(settings.prenom ?? "Yannick").trim(), td = today();
+  const rel = contacts.filter(c => c.relance && c.relance <= td && !["Gagné", "Perdu"].includes(c.statut)).length;
+  let lines;
+  if (g.soir) {
+    const enc = allEncaissements().filter(e => e.date === td).reduce((a, e) => a + e.montant, 0), nv = contacts.filter(c => c.createdAt && startOfDay(c.createdAt) === startOfDay(Date.now())).length;
+    lines = [enc > 0 && `Encaissé aujourd'hui : ${money(enc)}`, nv > 0 && `${plur(nv, "nouveau client", "nouveaux clients")} aujourd'hui`, rel > 0 && `${plur(rel, "relance", "relances")} à prévoir`];
+  } else {
+    const reste = docs.filter(d => !d.supersededBy && d.statut !== "Refusé" && (d.type === "Proforma" || d.statut === "Accepté" || (d.paiements || []).length)).reduce((a, d) => a + etatDoc(d).reste, 0);
+    lines = [rel > 0 && `${plur(rel, "relance", "relances")} à faire aujourd'hui`, reste > 0 && `Reste à encaisser : ${money(reste)}`];
+  }
+  lines = lines.filter(Boolean);
+  layerOnClose = cb || null;
+  openLayer(`<div class="greet"><div class="gh"><div class="gi"><svg class="ic" aria-hidden="true"><use href="#i-${g.icon}"/></svg></div><h3>${g.hello}${nom ? " " + esc(nom) : ""}</h3><p>${g.sub}</p></div>
+    ${lines.length ? `<ul class="gl">${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+    <div class="row" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="closeLayer">Commencer</button></div></div>`);
+  $("#layer").classList.add("center");
+}
+function promoText(i) {
+  const st = settings, ville = st.ville ?? "Douala, Cameroun", svc = getServices().slice(0, 5);
+  const slogan = String(st.slogan ?? DEFAULT_SLOGAN).replace(/\s+/g, " ").trim();
+  const coords = [ville && `📍 ${ville}`, st.tel && `📞 ${st.tel} (appel et WhatsApp)`, st.email && `✉️ ${st.email}`, st.web && `🌐 ${st.web}`].filter(Boolean).join("\n");
+  const geo = ville.split(",").map(x => x.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean).slice(0, 2).map(x => "#" + x).join(" ");
+  const tags = ["#EnkyDesign", geo, "#DesignGraphique", "#SiteWeb"].filter(Boolean).join(" ");
+  const gagnes = contacts.filter(c => c.statut === "Gagné").length;
+  const T = [
+`✨ Votre activité mérite d'être vue !
+
+${AGENCE} vous accompagne pour développer votre présence en ligne :
+${svc.map(x => "✅ " + x).join("\n")}
+${slogan ? "\n" + slogan + "\n" : ""}
+${coords}
+
+👉 Écrivez-nous en message privé pour demander votre devis.
+
+${tags}`,
+`💡 Astuce du jour
+
+Avant de vous contacter, vos futurs clients vous cherchent sur Internet. Un logo soigné, des visuels cohérents et un site clair rassurent et donnent envie de vous faire confiance.
+
+${AGENCE}, c'est : ${svc.slice(0, 4).join(" • ")}.
+
+${coords}
+
+💬 Dites-nous où en est votre activité en ligne, nous vous conseillons.
+
+${tags}`,
+`🤝 ${gagnes >= 3 ? `Merci à nos ${gagnes} clients pour leur confiance !` : "Chaque projet est une histoire de confiance."}
+
+[Ajoutez ici la photo ou la capture d'un projet récent]
+
+Logo, site web, visuels, formation : nous mettons notre savoir-faire au service de votre réussite. Et si c'était votre tour ?
+
+${coords}
+
+${tags}`,
+`📣 Un projet en tête ? Parlons-en !
+
+${svc.slice(0, 4).join(", ")}… ${AGENCE} transforme vos idées en réalité.
+
+💬 Contactez-nous dès aujourd'hui${st.tel ? " au " + st.tel : ""} et recevez une proposition adaptée à votre besoin.
+${st.web ? "\n🌐 " + st.web + "\n" : ""}
+${tags}`];
+  return T[i % T.length];
+}
+function renderPromo() {
+  const i = promoIdx % PROMO_COUNT;
+  openLayer(`<h3>Idée de publication</h3>${promoIsAuto ? `<p class="muted" style="margin:0 0 6px">Aucune nouvelle entrée depuis ${promoIdle} jours. Une publication peut ramener des clients : voici un modèle prêt à adapter et à publier sur Facebook, Instagram, WhatsApp ou LinkedIn.</p>` : ""}
+  <label>Modèle ${i + 1} sur ${PROMO_COUNT} (modifiable)</label><textarea id="promo_txt" style="min-height:250px">${esc(promoText(i))}</textarea>
+  <div class="row" style="margin-top:12px"><button type="button" class="btn" data-act="promoCopy">Copier</button>${navigator.share ? `<button type="button" class="btn grey" data-act="promoShare">Partager</button>` : ""}<button type="button" class="btn grey" data-act="promoNext">Autre modèle</button><span class="sp"></span><button type="button" class="btn grey" data-act="closeLayer">Fermer</button></div>`);
+  $("#layer").classList.add("center");
+}
+function maybePromo() {
+  if (!user || settings.promoAuto === false || layerOpen || sheetOpen) return;
+  if (!contacts.length && !docs.length) return;
+  const idle = daysIdle(); if (idle < 8) return;                       // 7 jours sans entrée => proposition le 8e jour
+  const last = localStorage.getItem("promoShown");
+  if (last && Math.round((startOfDay(Date.now()) - parseYMD(last).getTime()) / 86400000) < 7) return;   // pas plus d'une fois par semaine
+  localStorage.setItem("promoShown", today());
+  promoIdle = idle; promoIsAuto = true; renderPromo();
+}
+function startWelcome() {
+  if (welcomeRan) return; welcomeRan = true;
+  const t0 = Date.now();
+  (function wait() {
+    if ((dataLoaded.c && dataLoaded.d) || Date.now() - t0 > 4000) setTimeout(run, 700); else setTimeout(wait, 150);
+  })();
+  function run() {
+    if (!user || layerOpen || sheetOpen) return;
+    let fresh = true; try { fresh = !sessionStorage.getItem("greeted"); sessionStorage.setItem("greeted", "1"); } catch (e) {}
+    if (fresh) showGreeting(maybePromo); else maybePromo();
+  }
+}
 function viewSettings() {
   const s = settings;
   const dark = document.documentElement.dataset.theme === "dark";
@@ -880,6 +1009,7 @@ function viewSettings() {
       <button data-act="theme" data-t="dark" class="${dark ? "on" : ""}"><svg class="ic"><use href="#i-moon"/></svg>Sombre</button>
     </div></div>
   <div class="card"><b>Mes informations (sur les PDF)</b>
+    <label>Votre prénom (message d'accueil)</label><input id="s_prenom" value="${esc(s.prenom ?? "Yannick")}" placeholder="Prénom">
     <label>Slogan de l'agence</label><input id="s_slogan" value="${esc(s.slogan ?? DEFAULT_SLOGAN)}" placeholder="Votre slogan (laisser vide pour ne rien afficher)">
     <label>Ville, Pays</label><input id="s_ville" value="${esc(s.ville ?? "Douala, Cameroun")}">
     <label>Téléphone / WhatsApp</label><input id="s_tel" value="${esc(s.tel)}" placeholder="+237 6XX XXX XXX">
@@ -890,6 +1020,9 @@ function viewSettings() {
     <label>Moyens de paiement</label><textarea id="s_pay" placeholder="Orange Money : … / MTN MoMo : … / Banque : …">${esc(s.pay)}</textarea>
     <label>Mes services habituels (un par ligne)</label><textarea id="s_services" style="min-height:130px" placeholder="Un service par ligne">${esc(s.services ?? DEFAULT_SERVICES.join("\n"))}</textarea>
     <p class="muted" style="margin:4px 0 0">Proposés en liste déroulante dans les fiches clients, devis et proformas.</p>
+    <label class="chkrow"><input type="checkbox" id="s_promo" ${s.promoAuto !== false ? "checked" : ""}><span>Proposer un modèle de publication après 7 jours sans nouvelle entrée</span></label>
+    <p class="muted" style="margin:4px 0 0">${lastEntryTs() ? `Dernière entrée (client, document ou paiement) : ${new Date(lastEntryTs()).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, soit ${daysIdle()} jour${daysIdle() > 1 ? "s" : ""}.` : "Aucune entrée enregistrée pour l'instant."}</p>
+    <div class="row" style="margin-top:8px"><button type="button" class="btn sm grey" data-act="promoNow">Voir un modèle de publication</button></div>
     <label>Conditions par défaut (devis et proforma)</label><textarea id="s_cond" style="min-height:120px">${esc(s.cond ?? DEFAULT_COND)}</textarea>
     <label>Taux de TVA par défaut (%)</label><input id="s_tva" value="${esc(s.tvaTaux ?? 19.25)}">
     <p><button class="btn" data-act="saveSettings">Enregistrer</button></p></div>
@@ -951,7 +1084,8 @@ $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeS
 // ---------- composants natifs remplacés (thème bordeaux & noir) ----------
 let layerOpen = false, dp = null, selTarget = null, selSeq = 0;
 const openLayer = html => { $("#lp").innerHTML = html; if (!layerOpen) { layerOpen = true; history.pushState({ k: "layer" }, ""); } $("#layer").hidden = false; };
-const hideLayer = () => { layerOpen = false; $("#layer").hidden = true; dp = null; selTarget = null; };
+let layerOnClose = null;
+const hideLayer = () => { layerOpen = false; $("#layer").hidden = true; $("#layer").classList.remove("center"); dp = null; selTarget = null; const cb = layerOnClose; layerOnClose = null; if (cb) setTimeout(cb, 380); };
 const closeLayer = () => { if (!layerOpen) return; hideLayer(); pendingBack++; history.back(); };
 $("#layer").addEventListener("click", e => { if (e.target.id === "layer") closeLayer(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && layerOpen) closeLayer(); });
@@ -1465,6 +1599,14 @@ const acts = {
   nav: d => go(d.r),
   theme: d => setTheme(d.t),
   closeLayer: () => closeLayer(),
+  promoNow: () => { promoIdle = daysIdle(); promoIsAuto = false; renderPromo(); },
+  promoNext: () => { promoIdx++; localStorage.setItem("promoIdx", promoIdx); renderPromo(); },
+  promoCopy: async () => {
+    const ta = $("#promo_txt"); if (!ta) return;
+    try { await navigator.clipboard.writeText(ta.value); } catch (e) { ta.select(); try { document.execCommand("copy"); } catch (e2) {} }
+    toast("Texte copié : collez-le dans votre publication.");
+  },
+  promoShare: async () => { const ta = $("#promo_txt"); if (ta) try { await navigator.share({ text: ta.value }); } catch (e) {} },
   pickDate: d => { const inp = $("#" + d.for); if (!inp) return; dp = { id: d.for, month: parseYMD(inp.value || today()), clear: d.for === "c_relance" }; dp.month.setDate(1); renderDp(); },
   dpStep: d => { dp.month = new Date(dp.month.getFullYear(), dp.month.getMonth() + (+d.dir), 1); renderDp(); },
   dpPick: d => {
@@ -1524,7 +1666,7 @@ const acts = {
   solder: d => solderDoc(d.id),
   toProforma: d => { const s = docs.find(x => x.id === d.id); if (!s) return; if (s.statut === "Refusé") return toast("Document refusé : transformation impossible."); const { id, numero, createdAt, supersededBy, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today(), paiements: s.paiements || [], _sourceId: s.id }); },
   saveSettings: async () => {
-    const s = { ...settings, ville: $("#s_ville").value.trim(), tel: $("#s_tel").value.trim(), email: $("#s_email").value.trim(), web: $("#s_web").value.trim(), niu: $("#s_niu").value.trim(), regime: $("#s_regime").value.trim(), pay: $("#s_pay").value.trim(), cond: $("#s_cond").value, tvaTaux: num($("#s_tva").value) || 19.25, slogan: $("#s_slogan").value.trim(), services: $("#s_services").value.split("\n").map(x => x.trim()).filter(Boolean).join("\n") };
+    const s = { ...settings, ville: $("#s_ville").value.trim(), tel: $("#s_tel").value.trim(), email: $("#s_email").value.trim(), web: $("#s_web").value.trim(), niu: $("#s_niu").value.trim(), regime: $("#s_regime").value.trim(), pay: $("#s_pay").value.trim(), cond: $("#s_cond").value, tvaTaux: num($("#s_tva").value) || 19.25, slogan: $("#s_slogan").value.trim(), prenom: $("#s_prenom").value.trim(), promoAuto: $("#s_promo").checked, services: $("#s_services").value.split("\n").map(x => x.trim()).filter(Boolean).join("\n") };
     try { await setDoc(doc(db, "settings", "main"), s); toast("Réglages enregistrés."); } catch (e) { toast("Échec : " + e.code); }
   },
   sigClear: () => { pctx.clearRect(0, 0, pad.width, pad.height); hasInk = false; },
