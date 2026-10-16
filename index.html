@@ -191,6 +191,55 @@ nav.bottom button.on::before{content:"";position:absolute;top:-1px;left:50%;tran
 .prog.full i{background:var(--ok)}
 @media (min-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.kpis .kpi b{font-size:24px}}
 
+
+/* ---------- Composants natifs : thème bordeaux & noir ---------- */
+:root{color-scheme:light;accent-color:var(--red2);scrollbar-color:var(--red2) transparent;scrollbar-width:thin}
+input,textarea{caret-color:var(--red2)}
+input:-webkit-autofill,input:-webkit-autofill:focus,textarea:-webkit-autofill{-webkit-text-fill-color:var(--ink);caret-color:var(--red2);box-shadow:0 0 0 1000px var(--surface) inset;transition:background-color 9999s ease-out 0s}
+:focus-visible{outline:2px solid var(--red2);outline-offset:2px}
+input:focus-visible,textarea:focus-visible{outline:none}
+input[type="checkbox"],input[type="radio"]{-webkit-appearance:none;appearance:none;width:22px!important;height:22px;padding:0;margin:0;flex-shrink:0;display:inline-grid;place-content:center;border:1.8px solid var(--inputline);background:var(--surface);cursor:pointer;transition:background .18s,border-color .18s,box-shadow .18s}
+input[type="checkbox"]{border-radius:7px}
+input[type="radio"]{border-radius:50%}
+input[type="checkbox"]::after{content:"";width:11px;height:6px;border:solid #fff;border-width:0 0 2.6px 2.6px;transform:translateY(-1px) rotate(-45deg) scale(0);transition:transform .18s cubic-bezier(.3,1.5,.5,1)}
+input[type="radio"]::after{content:"";width:10px;height:10px;border-radius:50%;background:#fff;transform:scale(0);transition:transform .18s cubic-bezier(.3,1.5,.5,1)}
+input[type="checkbox"]:checked,input[type="radio"]:checked{background:var(--red2);border-color:var(--red2)}
+input[type="checkbox"]:checked::after{transform:translateY(-1px) rotate(-45deg) scale(1)}
+input[type="radio"]:checked::after{transform:scale(1)}
+input[type="checkbox"]:focus-visible,input[type="radio"]:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(179,34,31,.25)}
+.sel-native{display:none!important}
+.selbtn,.dpf{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:10px 11px;border:1px solid var(--inputline);border-radius:10px;background:var(--surface);color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.selbtn.ph>span:first-child{color:var(--grey)}
+.selbtn .ic,.dpf .ic{width:18px;height:18px;color:var(--red2);flex-shrink:0;stroke-width:2}
+.selbtn:active,.dpf:active,.selbtn:focus-visible,.dpf:focus-visible{border-color:var(--red2);box-shadow:0 0 0 3px rgba(179,34,31,.12);outline:none}
+.dpf{justify-content:flex-start}
+#layer{position:fixed;inset:0;z-index:200;background:rgba(20,8,6,.58);display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .15s ease}
+#layer[hidden]{display:none}
+.lp{background:var(--card);width:100%;max-width:430px;border-radius:20px 20px 0 0;padding:16px 14px calc(18px + env(safe-area-inset-bottom,0px));max-height:88vh;overflow:auto;animation:slideUp .22s cubic-bezier(.2,.8,.2,1)}
+.lp h3{margin:0 0 10px;font-size:19px;color:var(--title)}
+@media (min-width:700px){#layer{align-items:center}.lp{border-radius:20px;box-shadow:0 30px 70px -20px rgba(0,0,0,.5)}}
+.optlist{max-height:58vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--ink);transition:background .15s}
+.opt:active{background:var(--paper2)}
+.opt .rd{width:22px;height:22px;border-radius:50%;border:1.8px solid var(--inputline);flex-shrink:0;display:grid;place-content:center;transition:background .18s,border-color .18s}
+.opt .rd::after{content:"";width:10px;height:10px;border-radius:50%;background:#fff;transform:scale(0);transition:transform .18s cubic-bezier(.3,1.5,.5,1)}
+.opt.on{background:var(--paper2);border-color:var(--red2);font-weight:600}
+.opt.on .rd{background:var(--red2);border-color:var(--red2)}
+.opt.on .rd::after{transform:scale(1)}
+.since{display:flex;gap:12px;align-items:center;padding:11px 12px;margin:10px 0 2px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(135deg,var(--paper2),transparent)}
+.since .ic{width:22px;height:22px;color:var(--red2);flex-shrink:0}
+.since b{display:block;font-size:13.5px;font-weight:700}
+.since span{display:block;font-size:12.5px;color:var(--grey);margin-top:1px}
+.since.warn{border-style:dashed}
+
+.btn.ico{display:inline-flex;align-items:center;gap:6px}
+.btn.ico .ic{width:16px;height:16px;stroke-width:2.1}
+.opt.plain .rd{display:none}
+.opt.plain .ic{width:20px;height:20px;color:var(--red2);flex-shrink:0}
+.card.refuse{border-left:3px solid var(--bad)}
+.locked{display:flex;gap:9px;align-items:flex-start;margin-top:8px;padding:9px 11px;border-radius:10px;background:var(--bad-bg);color:var(--bad);font-size:12.5px;line-height:1.35}
+.locked .ic{width:17px;height:17px;flex-shrink:0;margin-top:1px;stroke-width:2.1}
+.typ{font-size:11.5px;font-weight:600;color:var(--grey);padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
 /* ---------- Cards, KPI ---------- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow);transition:transform .18s ease,box-shadow .18s ease}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -304,6 +353,11 @@ setTimeout(window.__hideSplash,7000)})();
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
 </defs></svg>
 
 <div id="login" hidden>
@@ -350,6 +404,7 @@ setTimeout(window.__hideSplash,7000)})();
   </nav>
 </div>
 <div id="sheet" class="sheet" hidden><div class="panel" id="panel"></div></div>
+<div id="layer" hidden><div class="lp" id="lp"></div></div>
 <div id="toast" hidden></div>
 
 
@@ -625,6 +680,7 @@ function contactCard(c) {
     </div>
     <div class="muted" style="margin:8px 0 0">${esc(c.besoin)}${c.budget ? " · " + money(c.budget) : ""}${c.origine === "Partenaire" ? " · via " + esc(c.partenaire) : ""}</div>
     ${c.relance ? `<div class="${late ? "over" : "muted"}" style="margin-top:2px">Relance : ${fdate(c.relance)}</div>` : ""}
+    ${c.createdAt ? `<div class="muted" style="margin-top:2px">Enregistré le ${fdate(ymd(new Date(c.createdAt)))} · ${anciennete(c.createdAt)}</div>` : ""}
     <div class="row" style="margin-top:10px">
       ${c.tel ? `<a class="btn sm alt" style="text-decoration:none" target="_blank" href="${waLink(c.tel, msg)}">WhatsApp</a><a class="btn sm alt" style="text-decoration:none" href="tel:${esc(c.tel)}">Appeler</a>` : ""}
       <button class="btn sm grey" data-act="newDoc" data-id="${c.id}">+ Devis</button>
@@ -642,35 +698,43 @@ function viewContacts() {
   ${list.length ? list.map(contactCard).join("") : `<div class="card muted">Aucun client ici. Appuyez sur + pour en ajouter un.</div>`}
   <button class="fab" data-act="newContact" title="Nouveau client">+</button>`;
 }
+// documents PDF réellement disponibles pour un document (selon son type et son statut)
+function docOutputs(d) {
+  const out = [{ act: "pdf", label: d.type === "Devis" ? "Devis" : "Proforma" }];
+  if ((d.type === "Proforma" && d.statut !== "Refusé") || d.factureNumero) out.push({ act: "facture", label: "Facture" });
+  return out;
+}
+const docDlBtn = (act, id, label) => `<button class="btn sm grey ico" data-act="${act}" data-id="${id}" data-mode="download"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>${label}</button>`;
+const docShareBtn = id => IS_MOBILE ? `<button class="btn sm grey ico" data-act="shareDoc" data-id="${id}"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg>Partager</button>` : "";
+const delBtn = id => `<button class="btn sm danger" data-act="quickDelDoc" data-id="${id}" title="Supprimer ce document" aria-label="Supprimer ce document">🗑</button>`;
 function viewDocs() {
   const list = [...docs].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return (list.length ? list.map(d => {
     const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0);
-    const solde = t.total > 0 && reste <= 0;
+    const solde = t.total > 0 && reste <= 0, refuse = d.statut === "Refusé";
     const succ = d.supersededBy ? docs.find(x => x.id === d.supersededBy) : null;
-    return `<div class="card" style="${d.supersededBy ? "opacity:.6" : ""}">
-    <div class="row"><b>${esc(d.numero)}</b><span class="muted">${fdate(d.date)}</span><span class="sp"></span>${d.supersededBy ? `<span class="badge">Remplacé</span>` : `<span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span>`}</div>
+    const outs = docOutputs(d);
+    const head = `<div class="row"><b>${esc(d.numero)}</b><span class="typ">${d.type === "Devis" ? "Devis" : "Proforma"}</span><span class="sp"></span>${d.supersededBy ? `<span class="badge">Remplacé</span>` : `<span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span>`}</div>
     <div style="margin:4px 0">${esc(d.clientNom)}${d.clientEntreprise ? " · " + esc(d.clientEntreprise) : ""}</div>
-    <div class="muted">${esc(d.objet)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>
-    ${d.supersededBy
-      ? `<div class="muted">Transformé en ${succ ? esc(succ.numero) : "document suivant"} — ne compte plus dans les statistiques.</div>
-         <div class="row" style="margin-top:6px">${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}<button class="btn sm danger" data-act="quickDelDoc" data-id="${d.id}" title="Supprimer ce document">🗑</button></div>`
-      : `${paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b> · <a href="#" data-act="paiements" data-id="${d.id}">détail des paiements</a></div>` : ""}
-    <div class="row" style="margin-top:6px">
-      ${pdfButtons("pdf", d.id, d.type === "Devis" ? "Devis" : "Proforma", "")}
-      <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
-    </div>
-    <div class="row" style="margin-top:6px">
-      ${d.type === "Devis" ? `<button class="btn sm grey" data-act="toProforma" data-id="${d.id}">→ Proforma</button>` : ""}
-      ${solde ? SOLDE_BTN : `<button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Avance / paiement</button>
-      ${reste > 0 ? `<button class="btn sm" data-act="solder" data-id="${d.id}">Solder</button>` : ""}`}
-    </div>
-    <div class="row" style="margin-top:6px">
-      ${pdfButtons("facture", d.id, "Facture", "")}
-      <span class="sp"></span>
-      <select data-change="docStatus" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(s => `<option ${d.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-      <button class="btn sm danger" data-act="quickDelDoc" data-id="${d.id}" title="Supprimer ce document">🗑</button>
-    </div>`}
+    <div class="muted">${esc(d.objet)}${d.objet ? " · " : ""}${fdate(d.date)}</div><div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t.total)}</div>`;
+    if (d.supersededBy) return `<div class="card" style="opacity:.6">${head}
+      <div class="muted">Transformé en ${succ ? esc(succ.numero) : "document suivant"} — ne compte plus dans les statistiques.</div>
+      <div class="row" style="margin-top:8px">${docDlBtn("pdf", d.id, outs[0].label)}${docShareBtn(d.id)}<span class="sp"></span>${delBtn(d.id)}</div></div>`;
+    const payLine = paye > 0 ? `<div class="muted">Réglé : ${money(paye)} — Reste : <b style="color:${reste > 0 ? "var(--red2)" : "var(--ok)"}">${money(reste)}</b> · <a href="#" data-act="paiements" data-id="${d.id}">détail des paiements</a></div>` : "";
+    const facLine = d.factureNumero ? `<div class="muted">Facture émise : ${esc(d.factureNumero)}${d.factureDate ? " le " + fdate(d.factureDate) : ""}</div>` : "";
+    const actions = refuse
+      ? `<div class="locked"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><div>Document refusé : encaissements et modifications verrouillés. Repassez le statut sur « Envoyé » ou « Accepté » si le client change d'avis.</div></div>`
+      : `<div class="row" style="margin-top:6px">
+          <button class="btn sm grey" data-act="editDoc" data-id="${d.id}">Modifier</button>
+          ${d.type === "Devis" ? `<button class="btn sm grey" data-act="toProforma" data-id="${d.id}">→ Proforma</button>` : ""}
+          ${solde ? SOLDE_BTN : `<button class="btn sm grey" data-act="newRecu" data-id="${d.id}">Avance / paiement</button>${reste > 0 ? `<button class="btn sm" data-act="solder" data-id="${d.id}">Solder</button>` : ""}`}
+        </div>`;
+    return `<div class="card ${refuse ? "refuse" : ""}">${head}${payLine}${facLine}
+    <div class="row" style="margin-top:8px">${outs.map(o => docDlBtn(o.act, d.id, o.label)).join("")}${docShareBtn(d.id)}</div>
+    ${actions}
+    <div class="row" style="margin-top:8px"><span class="sp"></span>
+      <select data-change="docStatus" data-title="Statut du document" data-id="${d.id}" style="width:auto;padding:6px">${["Brouillon", "Envoyé", "Accepté", "Refusé"].map(x => `<option ${d.statut === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+      ${delBtn(d.id)}</div>
     </div>`; }).join("") : `<div class="card muted">Aucun document pour l'instant. Appuyez sur + pour créer un devis ou une proforma.</div>`)
     + `<button class="fab" data-act="newDoc" title="Nouveau document">+</button>`;
 }
@@ -872,9 +936,10 @@ function setTheme(t) {
 window.addEventListener("popstate", e => {
   if (pendingBack > 0) { pendingBack--; return; }       // retour déclenché par la fermeture d'une fenêtre
   const st = e.state || {};
+  if (layerOpen) { hideLayer(); return; }               // retour = fermer le sélecteur ouvert
   if (sheetOpen) { hideSheet(); return; }               // retour = fermer la fenêtre ouverte
   if (st.k === "app") { route = st.r || "home"; render(); scrollTo(0, 0); return; }
-  if (st.k === "sheet") { history.back(); return; }
+  if (st.k === "sheet" || st.k === "layer") { history.back(); return; }
   if (!user) return;                                    // racine atteinte (écran d'accueil)
   if (exitArmed) { exitArmed = false; history.back(); return; }   // 2e retour rapproché : on quitte
   exitArmed = true; toast("Appuyez encore sur Retour pour quitter");
@@ -883,9 +948,59 @@ window.addEventListener("popstate", e => {
 });
 $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 
+// ---------- composants natifs remplacés (thème bordeaux & noir) ----------
+let layerOpen = false, dp = null, selTarget = null, selSeq = 0;
+const openLayer = html => { $("#lp").innerHTML = html; if (!layerOpen) { layerOpen = true; history.pushState({ k: "layer" }, ""); } $("#layer").hidden = false; };
+const hideLayer = () => { layerOpen = false; $("#layer").hidden = true; dp = null; selTarget = null; };
+const closeLayer = () => { if (!layerOpen) return; hideLayer(); pendingBack++; history.back(); };
+$("#layer").addEventListener("click", e => { if (e.target.id === "layer") closeLayer(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && layerOpen) closeLayer(); });
+
+const dateField = (id, value) => `<input type="hidden" id="${id}" value="${esc(value || "")}"><button type="button" class="dpf" data-act="pickDate" data-for="${id}"><svg class="ic" aria-hidden="true"><use href="#i-cal"/></svg><span>${value ? esc(fdate(value)) : "Choisir une date"}</span></button>`;
+function renderDp() {
+  const inp = $("#" + dp.id); if (!inp) return closeLayer();
+  const cur = inp.value, y = dp.month.getFullYear(), m = dp.month.getMonth(), todayS = today(), lead = (new Date(y, m, 1).getDay() + 6) % 7, nd = new Date(y, m + 1, 0).getDate();
+  const cells = [...Array(lead)].map(() => `<span class="cd out"></span>`);
+  for (let k = 1; k <= nd; k++) { const sd = y + "-" + pad2(m + 1) + "-" + pad2(k); cells.push(`<button type="button" class="cd ${sd === todayS ? "today" : ""} ${sd === cur ? "sel" : ""}" data-act="dpPick" data-d="${sd}">${k}<i></i></button>`); }
+  openLayer(`<div class="cal-head"><button type="button" data-act="dpStep" data-dir="-1" aria-label="Mois précédent"><svg class="ic"><use href="#i-chev-l"/></svg></button><div class="lbl">${frd(y + "-" + pad2(m + 1) + "-01", { month: "long", year: "numeric" })}</div><button type="button" data-act="dpStep" data-dir="1" aria-label="Mois suivant"><svg class="ic"><use href="#i-chev-r"/></svg></button></div>
+  <div class="cal-quick">${[["Hier", -1], ["Aujourd'hui", 0], ["Demain", 1]].map(([l, k]) => { const t = shiftDays(todayS, k); return `<button type="button" class="${cur === t ? "on" : ""}" data-act="dpPick" data-d="${t}">${l}</button>`; }).join("")}</div>
+  <div class="cal-grid">${JOURS3.map(j => `<div class="cal-dow">${j}</div>`).join("")}${cells.join("")}</div>
+  <div class="row" style="margin-top:12px">${dp.clear ? `<button type="button" class="btn grey" data-act="dpPick" data-d="">Effacer</button>` : ""}<span class="sp"></span><button type="button" class="btn grey" data-act="closeLayer">Fermer</button></div>`);
+}
+function syncSel(sel) {
+  const b = document.querySelector(`.selbtn[data-for="${sel.dataset.selid}"]`); if (!b) return;
+  b.firstChild.textContent = sel.options[sel.selectedIndex]?.text || ""; b.classList.toggle("ph", sel.value === "");
+}
+function enhanceSelects() {
+  document.querySelectorAll("select:not([data-selid])").forEach(sel => {
+    const id = ++selSeq; sel.dataset.selid = id; sel.classList.add("sel-native"); sel.tabIndex = -1;
+    const b = document.createElement("button"); b.type = "button"; b.className = "selbtn"; b.dataset.act = "pickSel"; b.dataset.for = id;
+    if (sel.getAttribute("style")) b.setAttribute("style", sel.getAttribute("style"));
+    b.innerHTML = `<span></span><svg class="ic" aria-hidden="true"><use href="#i-chev-d"/></svg>`;
+    sel.after(b); syncSel(sel);
+  });
+}
+new MutationObserver(enhanceSelects).observe(document.body, { childList: true, subtree: true });
+enhanceSelects();
+const selTitle = sel => { let e = sel.previousElementSibling; while (e && e.tagName !== "LABEL") e = e.previousElementSibling; return sel.dataset.title || (e ? e.textContent.replace(/\s*\*\s*$/, "").trim() : "Choisir une option"); };
+const anciennete = ts => {
+  const a = new Date(ts), b = new Date(); if (a > b) return "Enregistré aujourd'hui";
+  let y = b.getFullYear() - a.getFullYear(), m = b.getMonth() - a.getMonth(), d = b.getDate() - a.getDate();
+  if (d < 0) { m--; d += new Date(b.getFullYear(), b.getMonth(), 0).getDate(); } if (m < 0) { y--; m += 12; }
+  const p = []; if (y) p.push(y + (y > 1 ? " ans" : " an")); if (m) p.push(m + " mois"); if (!y && d) p.push(d + (d > 1 ? " jours" : " jour"));
+  return p.length ? p.join(" et ") : "Enregistré aujourd'hui";
+};
+const joursDepuis = ts => Math.max(0, Math.floor((Date.now() - ts) / 86400000));
+function sinceBlock(c) {
+  if (c.createdAt) { const dt = new Date(c.createdAt), n = joursDepuis(c.createdAt);
+    return `<div class="since"><svg class="ic"><use href="#i-cal"/></svg><div><b>Client depuis le ${dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} à ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}</b><span>Ancienneté : ${anciennete(c.createdAt)} · ${n} jour${n > 1 ? "s" : ""}</span></div></div>`; }
+  if (c.id) return `<div class="since warn"><svg class="ic"><use href="#i-cal"/></svg><div><b>Date d'enregistrement inconnue</b><span>Cette fiche a été créée avant la mise en place du suivi de l'ancienneté. Vous pouvez la renseigner ci-dessous.</span></div></div>`;
+  return `<div class="since"><svg class="ic"><use href="#i-cal"/></svg><div><b>Date d'enregistrement automatique</b><span>La date et l'heure exactes seront enregistrées à la validation de la fiche.</span></div></div>`;
+}
 function contactForm(c) {
   edit = { ...c };
   openSheet(`<h3>${c.id ? "Modifier" : "Nouveau"} contact</h3>
+  ${sinceBlock(c)}
   <label>Nom *</label><input id="c_nom" value="${esc(c.nom)}">
   <label>Entreprise</label><input id="c_ent" value="${esc(c.entreprise)}">
   <label>Téléphone / WhatsApp</label><input id="c_tel" type="tel" value="${esc(c.tel)}">
@@ -896,7 +1011,8 @@ function contactForm(c) {
   <label>Statut</label><select id="c_statut">${STATUTS.map(s => `<option ${c.statut === s ? "selected" : ""}>${s}</option>`).join("")}</select>
   <label>Origine</label><select id="c_origine"><option ${c.origine !== "Partenaire" ? "selected" : ""}>Direct</option><option ${c.origine === "Partenaire" ? "selected" : ""}>Partenaire</option></select>
   <label>Nom du partenaire (si apporté par un partenaire)</label><input id="c_part" value="${esc(c.partenaire)}">
-  <label>Prochaine relance</label><input id="c_relance" type="date" value="${esc(c.relance)}">
+  <label>Prochaine relance</label>${dateField("c_relance", c.relance)}
+  ${c.id && !c.createdAt ? `<label>Client depuis le (facultatif)</label>${dateField("c_since", "")}` : ""}
   <label>Notes</label><textarea id="c_notes">${esc(c.notes)}</textarea>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="saveContact">Enregistrer</button><button class="btn grey" data-act="closeSheet">Annuler</button><span class="sp"></span>${c.id ? `<button class="btn danger sm" data-act="delContact">Supprimer</button>` : ""}</div>`);
 }
@@ -907,6 +1023,7 @@ async function saveContact() {
     budget: num($("#c_budget").value) || "", statut: $("#c_statut").value, origine: $("#c_origine").value, partenaire: $("#c_part").value.trim(), relance: $("#c_relance").value, notes: $("#c_notes").value.trim() };
   if (!c.relance && ["Devis envoyé", "Relancé"].includes(c.statut)) c.relance = addDays(today(), 3);
   if (["Gagné", "Perdu"].includes(c.statut)) c.relance = "";
+  if (!c.createdAt && $("#c_since") && $("#c_since").value) c.createdAt = Math.min(Date.now(), parseYMD($("#c_since").value).getTime() + 12 * 3600 * 1000);
   const id = c.id; delete c.id;
   try {
     if (id) await setDoc(doc(db, "contacts", id), c); else { c.createdAt = Date.now(); await addDoc(collection(db, "contacts"), c); }
@@ -924,7 +1041,7 @@ function docForm(d) {
   edit = JSON.parse(JSON.stringify(d));
   openSheet(`<h3>${d.id ? d.numero : "Nouveau document"}</h3>
   <div class="grid"><div><label>Type</label><select id="d_type"><option ${d.type === "Devis" ? "selected" : ""}>Devis</option><option ${d.type === "Proforma" ? "selected" : ""}>Proforma</option></select></div>
-  <div><label>Date</label><input id="d_date" type="date" value="${esc(d.date)}"></div></div>
+  <div><label>Date</label>${dateField("d_date", d.date)}</div></div>
   <label>Client</label><select id="d_contact"><option value="">Saisie libre</option>${contacts.map(c => `<option value="${c.id}" ${c.id === d.contactId ? "selected" : ""}>${esc(c.nom)}${c.entreprise ? " (" + esc(c.entreprise) + ")" : ""}</option>`).join("")}</select>
   <div class="grid"><div><label>Nom du client</label><input id="d_nom" value="${esc(d.clientNom)}"></div><div><label>Entreprise</label><input id="d_ent" value="${esc(d.clientEntreprise)}"></div>
   <div><label>Téléphone</label><input id="d_tel" value="${esc(d.clientTel)}"></div><div><label>NIU du client</label><input id="d_niu" value="${esc(d.clientNiu)}"></div></div>
@@ -990,13 +1107,14 @@ async function setDocStatus(id, statut) {
 function recuForm(docId) {
   const d = docs.find(x => x.id === docId); if (!d) return;
   const t = totals(d); const paye = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0); const reste = Math.max(t.total - paye, 0);
+  if (d.statut === "Refusé") { toast("Document refusé : encaissement impossible."); return; }
   if (t.total > 0 && reste <= 0) { toast("Soldé - Aucun encaissement possible"); return; }
   edit = { docId, docTotal: t.total, dejaPaye: paye };
   openSheet(`<h3>Reçu de paiement</h3><p class="muted">${esc(d.numero)} — ${esc(d.clientNom)}</p>
   <label>Montant reçu (FCFA)</label><input id="r_montant" inputmode="numeric" value="${reste || t.total}">
   <label>Mode de paiement</label><select id="r_mode"><option>Orange Money</option><option>MTN MoMo</option><option>Virement</option><option>Espèces</option><option>Chèque</option></select>
   <label>Nature du paiement</label><select id="r_nature"><option>Acompte</option><option>Paiement intermédiaire</option><option ${paye > 0 ? "selected" : ""}>Solde final</option><option ${paye === 0 ? "selected" : ""}>Paiement intégral</option></select>
-  <label>Date</label><input id="r_date" type="date" value="${today()}">
+  <label>Date</label>${dateField("r_date", today())}
   <div class="tot" style="margin-top:12px"><div><span>Total du document</span><span>${money(t.total)}</span></div><div><span>Déjà réglé</span><span>${money(paye)}</span></div><div class="big"><span>Reste avant ce paiement</span><span>${money(reste)}</span></div></div>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="saveRecu">Générer le reçu (PDF)</button><button class="btn grey" data-act="closeSheet">Annuler</button></div>`);
 }
@@ -1005,6 +1123,7 @@ async function saveRecu() {
   if (!montant) return toast("Indiquez le montant reçu.");
   const d = docs.find(x => x.id === edit.docId); if (!d) return;
   { const et = etatDoc(d);
+    if (d.statut === "Refusé") { closeSheet(); return toast("Document refusé : encaissement impossible."); }
     if (et.solde) { closeSheet(); return toast("Soldé - Aucun encaissement possible"); }
     if (et.total > 0 && montant > et.reste) return toast("Le montant dépasse le reste à payer (" + money(et.reste) + ")."); }
   try {
@@ -1166,6 +1285,7 @@ async function delPaiement(docId, i) {
 async function solderDoc(docId) {
   const d = docs.find(x => x.id === docId); if (!d) return;
   const t = totals(d); const paye = (d.paiements || []).reduce((a, x) => a + num(x.montant), 0); const reste = Math.max(t.total - paye, 0);
+  if (d.statut === "Refusé") return toast("Document refusé : encaissement impossible.");
   if (reste <= 0) return toast("Soldé - Aucun encaissement possible");
   if (!confirm(`Confirmer le paiement du solde de ${money(reste)} à la date du jour ?`)) return;
   try {
@@ -1310,7 +1430,7 @@ async function saveSignature(dataUrl, w, h) { await setDoc(doc(db, "settings", "
 // ---------- Excel / sauvegarde ----------
 function exportXlsx() {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(contacts.map(c => ({ Nom: c.nom, Entreprise: c.entreprise, Telephone: c.tel, Email: c.email, Besoin: c.besoin, Budget: c.budget, Statut: c.statut, Origine: c.origine, Partenaire: c.partenaire, "Prochaine relance": c.relance, Notes: c.notes }))), "Contacts");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(contacts.map(c => ({ Nom: c.nom, Entreprise: c.entreprise, Telephone: c.tel, Email: c.email, Besoin: c.besoin, Budget: c.budget, Statut: c.statut, Origine: c.origine, Partenaire: c.partenaire, "Prochaine relance": c.relance, "Enregistré le": c.createdAt ? ymd(new Date(c.createdAt)) : "", Notes: c.notes }))), "Contacts");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(docs.map(d => { const t = totals(d); return { Numero: d.numero, Type: d.type, Date: d.date, Client: d.clientNom, Entreprise: d.clientEntreprise, Objet: d.objet, "Total (FCFA)": t.total, Acompte: t.acompte, Statut: d.statut }; })), "Documents");
   XLSX.writeFile(wb, `Enky_Suivi_${today()}.xlsx`); localStorage.setItem("lastBackup", Date.now());
 }
@@ -1344,6 +1464,24 @@ async function restore(file) {
 const acts = {
   nav: d => go(d.r),
   theme: d => setTheme(d.t),
+  closeLayer: () => closeLayer(),
+  pickDate: d => { const inp = $("#" + d.for); if (!inp) return; dp = { id: d.for, month: parseYMD(inp.value || today()), clear: d.for === "c_relance" }; dp.month.setDate(1); renderDp(); },
+  dpStep: d => { dp.month = new Date(dp.month.getFullYear(), dp.month.getMonth() + (+d.dir), 1); renderDp(); },
+  dpPick: d => {
+    const id = dp && dp.id, inp = id && $("#" + id); if (!inp) return closeLayer();
+    inp.value = d.d; const b = document.querySelector(`.dpf[data-for="${id}"] span`); if (b) b.textContent = d.d ? fdate(d.d) : "Choisir une date";
+    inp.dispatchEvent(new Event("change", { bubbles: true })); closeLayer();
+  },
+  pickSel: d => {
+    const sel = document.querySelector(`select[data-selid="${d.for}"]`); if (!sel) return;
+    selTarget = d.for;
+    openLayer(`<h3>${esc(selTitle(sel))}</h3><div class="optlist" role="listbox">${[...sel.options].map((o, i) => `<button type="button" role="option" class="opt ${i === sel.selectedIndex ? "on" : ""}" data-act="optPick" data-i="${i}"><span class="rd"></span><span>${esc(o.text)}</span></button>`).join("")}</div>`);
+  },
+  optPick: d => {
+    const sel = selTarget && document.querySelector(`select[data-selid="${selTarget}"]`);
+    if (sel) { sel.selectedIndex = +d.i; syncSel(sel); sel.dispatchEvent(new Event("change", { bubbles: true })); }
+    closeLayer();
+  },
   cView: d => { caisseView = d.v; localStorage.setItem("caisseView", d.v); render(); },
   cStep: d => { caisseDate = stepDate(caisseView, caisseDate, +d.dir); render(); },
   calDay: d => { caisseDate = d.d; if (caisseView === "mois" || caisseView === "annee") { caisseView = "jour"; localStorage.setItem("caisseView", "jour"); } render(); },
@@ -1369,16 +1507,22 @@ const acts = {
   quickDelDoc: async d => { if (confirm("Supprimer ce document ? Cette action est définitive.")) { try { await deleteDoc(doc(db, "documents", d.id)); toast("Document supprimé."); } catch (e) { toast("Échec : " + e.code); } } },
   newRecu: d => recuForm(d.id), saveRecu,
   newDoc: d => newDocFrom(d.id),
-  editDoc: d => docForm(docs.find(x => x.id === d.id)),
+  editDoc: d => { const x = docs.find(z => z.id === d.id); if (!x) return; if (x.statut === "Refusé") return toast("Document refusé : repassez d'abord le statut sur Envoyé ou Accepté pour le modifier."); docForm(x); },
   addLine: () => { readDocFields(); edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); },
   delLine: d => { edit.lignes.splice(+d.i, 1); if (!edit.lignes.length) edit.lignes.push({ d: "", q: 1, pu: "" }); drawLines(); refreshTot(); },
   saveDoc: () => saveDoc(false), saveDocPdf: () => saveDoc(true),
   pdf: d => makePdf(docs.find(x => x.id === d.id), d.mode),
   paiements: d => paiementsForm(d.id),
   delPaiement: d => delPaiement(edit.docId, d.i),
-  facture: d => makeFacture(docs.find(x => x.id === d.id), d.mode),
+  facture: d => { const x = docs.find(z => z.id === d.id); if (!x) return; if (x.type === "Devis" && !x.factureNumero) return toast("Transformez d'abord le devis en proforma pour établir une facture."); if (x.statut === "Refusé" && !x.factureNumero) return toast("Document refusé : facture impossible."); makeFacture(x, d.mode); },
+  shareDoc: d => {
+    const x = docs.find(z => z.id === d.id); if (!x) return; const outs = docOutputs(x);
+    if (outs.length === 1) return acts[outs[0].act]({ id: x.id, mode: "share" });
+    openLayer(`<h3>Partager</h3><div class="optlist">${outs.map(o => `<button type="button" class="opt plain" data-act="shareOne" data-k="${o.act}" data-id="${x.id}"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg><span>${o.act === "pdf" ? (x.type === "Devis" ? "Le devis" : "La proforma") : "La facture"} (PDF)</span></button>`).join("")}</div>`);
+  },
+  shareOne: async d => { closeLayer(); await acts[d.k]({ id: d.id, mode: "share" }); },
   solder: d => solderDoc(d.id),
-  toProforma: d => { const s = docs.find(x => x.id === d.id); const { id, numero, createdAt, supersededBy, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today(), paiements: s.paiements || [], _sourceId: s.id }); },
+  toProforma: d => { const s = docs.find(x => x.id === d.id); if (!s) return; if (s.statut === "Refusé") return toast("Document refusé : transformation impossible."); const { id, numero, createdAt, supersededBy, ...r } = s; docForm({ ...r, type: "Proforma", statut: "Brouillon", date: today(), paiements: s.paiements || [], _sourceId: s.id }); },
   saveSettings: async () => {
     const s = { ...settings, ville: $("#s_ville").value.trim(), tel: $("#s_tel").value.trim(), email: $("#s_email").value.trim(), web: $("#s_web").value.trim(), niu: $("#s_niu").value.trim(), regime: $("#s_regime").value.trim(), pay: $("#s_pay").value.trim(), cond: $("#s_cond").value, tvaTaux: num($("#s_tva").value) || 19.25, slogan: $("#s_slogan").value.trim(), services: $("#s_services").value.split("\n").map(x => x.trim()).filter(Boolean).join("\n") };
     try { await setDoc(doc(db, "settings", "main"), s); toast("Réglages enregistrés."); } catch (e) { toast("Échec : " + e.code); }
@@ -1393,7 +1537,7 @@ document.addEventListener("pointermove", e => {
   const r = b.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 140);
   b.style.setProperty("--px", (dx / d * 1.7 * k).toFixed(2) + "px"); b.style.setProperty("--py", (dy / d * 1.1 * k).toFixed(2) + "px");
 });
-const PDF_ACTS = ["pdf", "facture", "saveRecu", "saveDocPdf", "solder", "recuPdf"], XLS_ACTS = ["exportXlsx"];
+const PDF_ACTS = ["pdf", "facture", "saveRecu", "saveDocPdf", "solder", "recuPdf", "shareDoc", "shareOne"], XLS_ACTS = ["exportXlsx"];
 document.addEventListener("click", async e => {
   const el = e.target.closest("[data-act]"); if (!el || !acts[el.dataset.act]) return;
   if (el.tagName === "A") e.preventDefault();
@@ -1404,19 +1548,23 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("change", async e => {
   const t = e.target;
-  if (t.dataset.change === "docStatus") setDocStatus(t.dataset.id, t.value);
+  if (t.dataset.change === "docStatus") {
+    const d0 = docs.find(x => x.id === t.dataset.id), p0 = d0 ? etatDoc(d0).paye : 0;
+    if (d0 && t.value === "Refusé" && p0 > 0 && !confirm(`Ce document a déjà reçu ${money(p0)} de paiements. Le marquer « Refusé » bloquera tout nouvel encaissement. Continuer ?`)) { t.value = d0.statut; syncSel(t); }
+    else setDocStatus(t.dataset.id, t.value);
+  }
   if (t.id === "d_contact") { const c = contacts.find(x => x.id === t.value); if (c) { $("#d_nom").value = c.nom || ""; $("#d_ent").value = c.entreprise || ""; $("#d_tel").value = c.tel || ""; if (!$("#d_objet").value) $("#d_objet").value = c.besoin || ""; } }
   if (t.id === "c_service" && t.value) {
     const inp = $("#c_besoin"), cur = inp.value.trim();
     if (!cur) inp.value = t.value; else if (!cur.toLowerCase().includes(t.value.toLowerCase())) inp.value = cur + ", " + t.value;
-    t.value = "";
+    t.value = ""; syncSel(t);
   }
   if (t.id === "d_service" && t.value) {
     readDocFields();
     const last = edit.lignes[edit.lignes.length - 1];
     if (last && !String(last.d || "").trim() && !String(last.pu || "").trim()) last.d = t.value; else edit.lignes.push({ d: t.value, q: 1, pu: "" });
     if (!$("#d_objet").value.trim()) $("#d_objet").value = t.value;
-    t.value = ""; drawLines(); refreshTot();
+    t.value = ""; syncSel(t); drawLines(); refreshTot();
   }
   if (t.id === "d_type") { readDocFields(); if (edit.type === "Proforma" && !edit.cond) edit.cond = settings.cond ?? DEFAULT_COND; docForm(edit); }
   else if (["d_date", "d_remise", "d_acompte", "d_valid", "d_tvat", "d_tvaon"].includes(t.id)) refreshTot();
