@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7A1010">
+<meta name="robots" content="noindex">
+<title>Diagnostic — Enky Suivi</title>
+<script>try{if(localStorage.getItem("theme")==="dark")document.documentElement.setAttribute("data-theme","dark")}catch(e){}</script>
+<style>
+:root{--paper:#faf6f2;--card:#fffdfb;--ink:#2b1f1c;--soft:#7a6a64;--line:#e3d8cf;--red:#b3221f;--ink-red:#5c0d0d;--ok:#2f6b34;--okbg:#e3f1e4;--warn:#8a5a00;--warnbg:#fbefd2;--bad:#8a1e14;--badbg:#fbe0dc;color-scheme:light}
+html[data-theme=dark]{--paper:#110908;--card:#1b1110;--ink:#f3e9e4;--soft:#ad9f97;--line:#392725;--red:#cf3a35;--ink-red:#f1c4bb;--ok:#93d596;--okbg:#1d3820;--warn:#ebbd62;--warnbg:#3b2d12;--bad:#f4a097;--badbg:#47201c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 12% 8%,var(--card),var(--paper) 55%);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.45;padding-bottom:40px}
+header{background:linear-gradient(135deg,#3d0a0a,#7a1010 60%,#b3221f);color:#fff;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;gap:12px;align-items:center}
+header img{width:42px;height:42px;border-radius:12px;background:#fff}
+header h1{margin:0;font-size:19px}header p{margin:2px 0 0;font-size:12.5px;opacity:.85}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+h2{margin:0 0 8px;font-size:16px;color:var(--ink-red)}
+.muted{color:var(--soft);font-size:12.5px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button,a.btn{border:0;border-radius:10px;padding:10px 14px;background:var(--red);color:#fff;font-weight:600;font-size:14px;text-decoration:none;cursor:pointer;display:inline-block}
+button.g,a.btn.g{background:var(--line);color:var(--ink)}
+.chk{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.chk:last-child{border-bottom:0}
+.dot{flex-shrink:0;width:22px;height:22px;border-radius:50%;display:grid;place-content:center;font-size:13px;font-weight:800;margin-top:1px}
+.ok .dot{background:var(--okbg);color:var(--ok)}.warn .dot{background:var(--warnbg);color:var(--warn)}.bad .dot{background:var(--badbg);color:var(--bad)}.run .dot{background:var(--line);color:var(--soft)}
+.chk b{display:block;font-size:14px}.chk span{font-size:12.5px;color:var(--soft);word-break:break-word}
+details{border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin:8px 0}
+summary{cursor:pointer;font-weight:600;font-size:13.5px}
+summary small{color:var(--red);font-weight:700}
+pre{white-space:pre-wrap;word-break:break-word;font-size:11.5px;margin:8px 0 0;max-height:200px;overflow:auto;color:var(--soft)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#3a1a18;color:#fff;padding:10px 16px;border-radius:99px;font-size:13.5px;display:none;z-index:9}
+</style>
+</head>
+<body>
+<header><img src="icon-192.png" alt=""><div><h1>Diagnostic — Enky Suivi</h1><p>Fonctionne même si l'application ne démarre pas</p></div></header>
+<main>
+  <div class="card">
+    <h2>Vérifications</h2>
+    <div id="checks"></div>
+    <div class="row">
+      <button id="bRun" class="g">Relancer les vérifications</button>
+      <button id="bWrite" class="g">Tester l'écriture du journal en ligne</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Journal de cet appareil</h2>
+    <p class="muted" id="devline"></p>
+    <div id="logs"></div>
+    <div class="row">
+      <button id="bCopy">Copier le rapport pour l'IA</button>
+      <button id="bDl" class="g">Télécharger (.txt)</button>
+      <button id="bClear" class="g">Vider le journal</button>
+    </div>
+  </div>
+  <p style="text-align:center"><a class="btn g" href="./">Retour à l'application</a></p>
+</main>
+<div id="toast"></div>
+<script>
+(function () {
+  var KEY = "enky_log", DKEY = "enky_dev", FB = "https://www.gstatic.com/firebasejs/10.14.1/";
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+  var fmt = function (ts) { return new Date(ts).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+  var toast = function (m) { var t = $("#toast"); t.textContent = m; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(function () { t.style.display = "none"; }, 2600); };
+  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  var results = [], cfg = {}, appVersion = "inconnue";
+
+  /* ----- appareil (même code que l'application) ----- */
+  var dev = lsGet(DKEY, null) || {};
+  (function () {
+    var ua = navigator.userAgent || "", m;
+    if (!dev.os) { if ((m = ua.match(/Android ([\d.]+)/))) dev.os = "Android " + m[1]; else if ((m = ua.match(/(?:iPhone|CPU) OS ([\d_]+)/))) dev.os = "iOS " + m[1].replace(/_/g, "."); else if (/Windows/.test(ua)) dev.os = "Windows"; else if (/Mac OS X/.test(ua)) dev.os = "macOS"; else dev.os = "Système inconnu"; }
+    if (!dev.model && (m = ua.match(/Android[^;]*; ([^;)]+?)(?: Build|\))/))) dev.model = m[1].trim();
+    if (!dev.browser) { if ((m = ua.match(/Edg\/(\d+)/))) dev.browser = "Edge " + m[1]; else if ((m = ua.match(/SamsungBrowser\/(\d+)/))) dev.browser = "Samsung Internet " + m[1]; else if ((m = ua.match(/(?:Firefox|FxiOS)\/(\d+)/))) dev.browser = "Firefox " + m[1]; else if ((m = ua.match(/(?:Chrome|CriOS)\/(\d+)/))) dev.browser = "Chrome " + m[1]; else if ((m = ua.match(/Version\/(\d+).*Safari/))) dev.browser = "Safari " + m[1]; else dev.browser = "Navigateur inconnu"; }
+    dev.screen = innerWidth + "×" + innerHeight + " @" + (Math.round((devicePixelRatio || 1) * 10) / 10);
+    dev.lang = navigator.language || ""; try { dev.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+    dev.net = (navigator.connection && navigator.connection.effectiveType) || "";
+  })();
+  var devLong = function () { return [dev.os, dev.model, dev.browser].filter(Boolean).join(" · ") + " · écran " + dev.screen + " · " + (dev.lang || "?") + (dev.net ? " · réseau " + dev.net : "") + " · " + (navigator.onLine ? "en ligne" : "HORS LIGNE"); };
+  $("#devline").textContent = devLong();
+
+  /* ----- vérifications ----- */
+  function setCheck(id, state, title, detail) {
+    var r = results.filter(function (x) { return x.id === id; })[0]; if (!r) { r = { id: id }; results.push(r); }
+    r.state = state; r.title = title; r.detail = detail || ""; draw();
+  }
+  function draw() {
+    $("#checks").innerHTML = results.map(function (r) {
+      var sym = { ok: "✓", warn: "!", bad: "✕", run: "…" }[r.state];
+      return "<div class='chk " + r.state + "'><div class='dot'>" + sym + "</div><div><b>" + esc(r.title) + "</b><span>" + esc(r.detail) + "</span></div></div>";
+    }).join("");
+  }
+  function timeout(p, ms) { return Promise.race([p, new Promise(function (_, ko) { setTimeout(function () { ko(new Error("délai dépassé (" + ms / 1000 + " s)")); }, ms); })]); }
+  async function run() {
+    results = []; draw();
+    setCheck("net", "run", "Connexion internet", "Test en cours…");
+    setCheck("ls", "run", "Stockage de l'appareil", "Test en cours…");
+    setCheck("app", "run", "Fichier de l'application", "Test en cours…");
+    try { await timeout(fetch(FB + "firebase-app.js", { mode: "no-cors", cache: "no-store" }), 6000); setCheck("net", navigator.onLine ? "ok" : "warn", "Connexion internet", "Les serveurs Google sont joignables."); }
+    catch (e) { setCheck("net", "bad", "Connexion internet", "Impossible de joindre les serveurs Google : " + e.message + ". Vérifiez le réseau, un éventuel blocage (VPN, pare-feu, antivirus) ou les données mobiles."); }
+    try { localStorage.setItem("_t", "1"); localStorage.removeItem("_t"); setCheck("ls", "ok", "Stockage de l'appareil", "Lecture et écriture possibles (le journal peut être conservé)."); }
+    catch (e) { setCheck("ls", "bad", "Stockage de l'appareil", "Stockage bloqué (navigation privée ou réglages du navigateur) : la connexion et le journal peuvent échouer."); }
+    try {
+      var r = await timeout(fetch("index.html?d=" + Date.now(), { cache: "no-store" }), 8000), t = await r.text();
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      var v = t.match(/APP_VERSION\s*=\s*"([^"]+)"/); appVersion = v ? v[1] : "non détectée";
+      cfg.apiKey = (t.match(/apiKey:\s*"([^"]+)"/) || [])[1]; cfg.projectId = (t.match(/projectId:\s*"([^"]+)"/) || [])[1]; cfg.authDomain = (t.match(/authDomain:\s*"([^"]+)"/) || [])[1];
+      var okForm = /id="loginForm"/.test(t);
+      setCheck("app", okForm && cfg.apiKey ? "ok" : "warn", "Fichier de l'application (index.html)", "Version en ligne : " + appVersion + " · " + Math.round(t.length / 1024) + " Ko" + (okForm ? "" : " · formulaire de connexion introuvable") + (cfg.projectId ? " · projet Firebase : " + cfg.projectId : " · configuration Firebase introuvable"));
+    } catch (e) { setCheck("app", "bad", "Fichier de l'application (index.html)", "Lecture impossible : " + e.message + ". Le fichier est peut-être absent du dépôt ou GitHub Pages n'est pas à jour."); }
+    var mods = [["firebase-app.js", "app"], ["firebase-auth.js", "auth"], ["firebase-firestore.js", "firestore"]];
+    setCheck("mods", "run", "Composants Firebase", "Chargement en cours…");
+    var bad = [];
+    for (var i = 0; i < mods.length; i++) { try { await timeout(import(FB + mods[i][0]), 12000); } catch (e) { bad.push(mods[i][1] + " (" + e.message + ")"); } }
+    setCheck("mods", bad.length ? "bad" : "ok", "Composants Firebase", bad.length ? "Échec de chargement : " + bad.join(", ") + ". L'application ne peut pas démarrer sans eux." : "Les 3 composants (app, auth, firestore) se chargent correctement.");
+    if (cfg.apiKey) {
+      setCheck("auth", "run", "API de connexion (Authentication)", "Test avec des identifiants fictifs…");
+      try {
+        var a = await timeout(fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + encodeURIComponent(cfg.apiKey), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "diagnostic@invalid.test", password: "diagnostic", returnSecureToken: true }) }), 10000);
+        var j = await a.json().catch(function () { return {}; }), msg = (j.error && (j.error.message || "")) || "";
+        if (a.status === 400 && /INVALID_LOGIN_CREDENTIALS|EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_EMAIL/.test(msg)) setCheck("auth", "ok", "API de connexion (Authentication)", "Joignable, clé API valide pour cette adresse (réponse normale pour un faux compte : " + msg + ").");
+        else if (/referer|blocked/i.test(msg) || a.status === 403) setCheck("auth", "bad", "API de connexion (Authentication)", "Refusée (HTTP " + a.status + ") : " + msg.replace(/\.+$/, "") + ". La clé API est probablement restreinte à d'autres domaines : ajoutez « " + location.hostname + " » dans Google Cloud > Identifiants > restrictions de la clé.");
+        else if (/API key not valid|API_KEY/i.test(msg)) setCheck("auth", "bad", "API de connexion (Authentication)", "Clé API invalide : " + msg);
+        else setCheck("auth", "warn", "API de connexion (Authentication)", "Réponse inattendue (HTTP " + a.status + ") : " + msg);
+      } catch (e) { setCheck("auth", "bad", "API de connexion (Authentication)", "Injoignable : " + e.message); }
+      setCheck("fs", "run", "Base de données (Firestore)", "Test en cours…");
+      try {
+        var f = await timeout(fetch("https://firestore.googleapis.com/v1/projects/" + cfg.projectId + "/databases/(default)/documents/logs?pageSize=1&key=" + encodeURIComponent(cfg.apiKey), { cache: "no-store" }), 10000);
+        var fj = await f.json().catch(function () { return {}; }), fm = (fj.error && (fj.error.message || "")) || "";
+        if (f.status === 403 && /permission/i.test(fm)) setCheck("fs", "ok", "Base de données (Firestore)", "Joignable. Lecture publique refusée par les règles (c'est le comportement attendu).");
+        else if (f.status === 200) setCheck("fs", "warn", "Base de données (Firestore)", "Joignable, mais la lecture de la collection « logs » est ouverte à tous : resserrez les règles Firestore.");
+        else if (f.status === 403) setCheck("fs", "bad", "Base de données (Firestore)", "Refusée : " + fm.replace(/\.+$/, "") + ". Vérifiez les restrictions de la clé API (domaine « " + location.hostname + " »).");
+        else if (f.status === 404) setCheck("fs", "bad", "Base de données (Firestore)", "Base introuvable pour le projet « " + cfg.projectId + " » : Firestore n'est pas créé ou le projet est incorrect.");
+        else setCheck("fs", "warn", "Base de données (Firestore)", "Réponse inattendue (HTTP " + f.status + ") : " + fm);
+      } catch (e) { setCheck("fs", "bad", "Base de données (Firestore)", "Injoignable : " + e.message); }
+    }
+  }
+  async function testWrite() {
+    if (!cfg.apiKey) { toast("Lancez d'abord les vérifications."); return; }
+    try {
+      var body = { fields: { at: { integerValue: String(Date.now()) }, kind: { stringValue: "diagnostic" }, msg: { stringValue: "Test d'écriture depuis la page de diagnostic" }, ver: { stringValue: appVersion }, dev: { stringValue: [dev.os, dev.model, dev.browser].filter(Boolean).join(" · ") }, tz: { stringValue: dev.tz || "" } } };
+      var r = await timeout(fetch("https://firestore.googleapis.com/v1/projects/" + cfg.projectId + "/databases/(default)/documents/logs?key=" + encodeURIComponent(cfg.apiKey), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), 10000);
+      var j = await r.json().catch(function () { return {}; });
+      if (r.ok) setCheck("write", "ok", "Écriture du journal en ligne", "Autorisée sans connexion : les tentatives de connexion échouées seront enregistrées.");
+      else setCheck("write", "warn", "Écriture du journal en ligne", "Refusée (HTTP " + r.status + ") : " + ((j.error && j.error.message) || "").replace(/\.+$/, "") + ". Tant que les règles Firestore n'autorisent pas la création dans « logs », seules les erreurs locales sont conservées.");
+    } catch (e) { setCheck("write", "bad", "Écriture du journal en ligne", "Échec : " + e.message); }
+  }
+
+  /* ----- journal local ----- */
+  var KINDS = { error: "Erreur JavaScript", promise: "Promesse rejetée", resource: "Chargement impossible", firebase: "Erreur Firebase", action: "Échec d'une action", console: "Message console", login_fail: "Connexion refusée", login_ok: "Connexion réussie", log_denied: "Journal en ligne refusé", net: "Réseau" };
+  function group(list) {
+    var map = {}, out = [];
+    list.forEach(function (e) { var k = e.kind + "|" + String(e.msg).slice(0, 120) + "|" + (e.where || ""), g = map[k]; if (!g) { g = map[k] = { kind: e.kind, msg: e.msg, stack: e.stack || "", code: e.code, where: e.where, act: e.act, n: 0, first: e.at, last: e.last || e.at, ver: e.ver }; out.push(g); } g.n += e.n || 1; g.first = Math.min(g.first, e.at); g.last = Math.max(g.last, e.last || e.at); });
+    out.sort(function (a, b) { return b.last - a.last; }); return out;
+  }
+  function drawLogs() {
+    var g = group(lsGet(KEY, [])); $("#logs").innerHTML = g.length ? g.map(function (x) {
+      return "<details><summary><small>" + esc(KINDS[x.kind] || x.kind) + (x.n > 1 ? " ×" + x.n : "") + "</small> · " + esc(String(x.msg).split("\n")[0].slice(0, 110)) + "<div class='muted'>" + esc(fmt(x.last)) + (x.where ? " · page " + esc(x.where) : "") + "</div></summary><pre>" + esc((x.code ? "Code : " + x.code + "\n" : "") + (x.act ? "Dernière action : " + x.act + "\n" : "") + (x.stack || "")) + "</pre></details>";
+    }).join("") : "<p class='muted'>Aucune erreur enregistrée sur cet appareil.</p>";
+  }
+  function report() {
+    var g = group(lsGet(KEY, [])), L = [], total = lsGet(KEY, []).reduce(function (a, e) { return a + (e.n || 1); }, 0);
+    L.push("=== RAPPORT DE DIAGNOSTIC — Enky Suivi ===");
+    L.push("Contexte pour l'IA : application web mono-fichier (index.html, JavaScript natif) hébergée sur GitHub Pages, avec Firebase Authentication et Firestore. Merci d'identifier la cause de chaque problème ci-dessous et de proposer un correctif précis.");
+    L.push("Version de l'application en ligne : " + appVersion); L.push("Généré le : " + fmt(Date.now()) + " (" + (dev.tz || "fuseau inconnu") + ")"); L.push("Adresse : " + location.origin + location.pathname.replace(/diagnostic\.html$/, ""));
+    L.push("Appareil : " + devLong());
+    L.push("\n--- Vérifications ---");
+    results.forEach(function (r) { L.push(({ ok: "[OK] ", warn: "[ATTENTION] ", bad: "[ÉCHEC] ", run: "[…] " }[r.state]) + r.title + " : " + r.detail); });
+    L.push("\n--- Journal d'erreurs de l'appareil : " + total + " événement(s), " + g.length + " distinct(s) ---");
+    if (!g.length) L.push("Aucune erreur enregistrée.");
+    g.forEach(function (x, i) { L.push("\n[" + (i + 1) + "] " + (KINDS[x.kind] || x.kind).toUpperCase() + " · " + x.n + " fois · du " + fmt(x.first) + " au " + fmt(x.last)); if (x.where || x.act) L.push("Page : " + (x.where || "?") + (x.act ? " · Dernière action : " + x.act : "")); L.push("Message : " + x.msg); if (x.code) L.push("Code : " + x.code); if (x.ver) L.push("Version : " + x.ver); if (x.stack) L.push("Trace :\n  " + String(x.stack).split("\n").join("\n  ")); });
+    return L.join("\n");
+  }
+  function copy(text) { return (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { return true; }, function () { var ta = document.createElement("textarea"); ta.value = text; ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok; }); }
+  $("#bCopy").onclick = function () { copy(report()).then(function (ok) { toast(ok ? "Rapport copié : collez-le dans votre conversation avec l'IA." : "Copie impossible : utilisez Télécharger."); }); };
+  $("#bDl").onclick = function () { var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([report()], { type: "text/plain;charset=utf-8" })); var d = new Date(); a.download = "Enky_Diagnostic_" + d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2) + ".txt"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  $("#bClear").onclick = function () { if (confirm("Vider le journal de cet appareil ?")) { try { localStorage.setItem(KEY, "[]"); } catch (e) {} drawLogs(); toast("Journal vidé."); } };
+  $("#bRun").onclick = run; $("#bWrite").onclick = testWrite;
+  drawLogs(); run();
+})();
+</script>
+</body>
+</html>

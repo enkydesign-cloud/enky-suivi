@@ -4,6 +4,208 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#7A1010">
+<script>
+/* ===== Journal d'erreurs : chargé avant tout le reste, sans dépendance ===== */
+(function () {
+  var W = window, KEY = "enky_log", DKEY = "enky_dev", MAX = 80;
+  W.APP_VERSION = "1.0.0 · 2026-10-16";
+  var mem = [], sid = Math.random().toString(36).slice(2, 8), sent = {}, sentCount = 0, buffer = [], sink = null, geoP = null;
+  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function clip(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) + "…" : s; }
+  function mask(m) { var p = String(m || "").split("@"); return p.length < 2 ? "" : (p[0].charAt(0) || "") + "***@" + p[1]; }
+  function clean(s, n) { return clip(String(s == null ? "" : s).replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, mask), n); }
+  W.__mask = mask;
+
+  /* ---------- appareil ---------- */
+  var dev = {};
+  (function () {
+    var ua = navigator.userAgent || "", m;
+    if ((m = ua.match(/Android ([\d.]+)/))) dev.os = "Android " + m[1];
+    else if ((m = ua.match(/(?:iPhone|CPU) OS ([\d_]+)/))) dev.os = "iOS " + m[1].replace(/_/g, ".");
+    else if ((m = ua.match(/Windows NT ([\d.]+)/))) dev.os = "Windows " + m[1];
+    else if (/Mac OS X/.test(ua)) dev.os = "macOS"; else if (/Linux/.test(ua)) dev.os = "Linux"; else dev.os = "Système inconnu";
+    if ((m = ua.match(/Android[^;]*; ([^;)]+?)(?: Build|\))/))) dev.model = m[1].trim();
+    else if (/iPhone/.test(ua)) dev.model = "iPhone"; else if (/iPad/.test(ua)) dev.model = "iPad";
+    if ((m = ua.match(/Edg\/([\d.]+)/))) dev.browser = "Edge " + m[1].split(".")[0];
+    else if ((m = ua.match(/OPR\/([\d.]+)/))) dev.browser = "Opera " + m[1].split(".")[0];
+    else if ((m = ua.match(/SamsungBrowser\/([\d.]+)/))) dev.browser = "Samsung Internet " + m[1].split(".")[0];
+    else if ((m = ua.match(/(?:Firefox|FxiOS)\/([\d.]+)/))) dev.browser = "Firefox " + m[1].split(".")[0];
+    else if ((m = ua.match(/(?:Chrome|CriOS)\/([\d.]+)/))) dev.browser = "Chrome " + m[1].split(".")[0];
+    else if ((m = ua.match(/Version\/([\d.]+).*Safari/))) dev.browser = "Safari " + m[1].split(".")[0];
+    else dev.browser = "Navigateur inconnu";
+    dev.pwa = !!((W.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true);
+    dev.screen = innerWidth + "×" + innerHeight + " @" + (Math.round((W.devicePixelRatio || 1) * 10) / 10);
+    dev.lang = navigator.language || ""; try { dev.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { dev.tz = ""; }
+    dev.net = (navigator.connection && navigator.connection.effectiveType) || ""; dev.ram = navigator.deviceMemory || "";
+    try { if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) navigator.userAgentData.getHighEntropyValues(["model", "platformVersion"]).then(function (v) {
+      if (v.model) dev.model = v.model; if (v.platformVersion && /^Android/.test(dev.os)) dev.os = "Android " + v.platformVersion.replace(/(\.0)+$/, ""); lsSet(DKEY, dev);
+    }, function () {}); } catch (e) {}
+    lsSet(DKEY, dev);
+  })();
+  function devShort() { return [dev.os, dev.model, dev.browser].filter(Boolean).join(" · "); }
+  function devLong() { return devShort() + (dev.pwa ? " · appli installée" : " · navigateur") + " · écran " + dev.screen + " · " + (dev.lang || "?") + (dev.net ? " · réseau " + dev.net : "") + " · " + (navigator.onLine ? "en ligne" : "HORS LIGNE"); }
+  W.__dev = function () { return dev; };
+
+  /* ---------- localisation approximative (ville, pays) via l'adresse IP ---------- */
+  function fetchJson(url, ms) { return new Promise(function (ok, ko) { var done = false, t = setTimeout(function () { if (!done) { done = true; ko(new Error("timeout")); } }, ms);
+    fetch(url, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) { if (!done) { done = true; clearTimeout(t); ok(j); } }, function (e) { if (!done) { done = true; clearTimeout(t); ko(e); } }); }); }
+  W.__geo = function () {
+    try { if (localStorage.getItem("enky_geo_off") === "1") return Promise.resolve(null); } catch (e) {}
+    if (geoP) return geoP;
+    try { var c = JSON.parse(sessionStorage.getItem("enky_geo") || "null"); if (c) return (geoP = Promise.resolve(c)); } catch (e) {}
+    geoP = fetchJson("https://ipwho.is/", 2500).then(function (j) { if (!j || j.success === false) throw 0; return { ip: j.ip, geo: [j.city, j.country].filter(Boolean).join(", ") }; })
+      .catch(function () { return fetchJson("https://ipapi.co/json/", 2500).then(function (j) { return { ip: j.ip, geo: [j.city, j.country_name].filter(Boolean).join(", ") }; }); })
+      .then(function (g) { try { sessionStorage.setItem("enky_geo", JSON.stringify(g)); } catch (e) {} return g; }, function () { return null; });
+    return geoP;
+  };
+
+  /* ---------- enregistrement ---------- */
+  function sigOf(e) { return e.kind + "|" + String(e.msg).slice(0, 120) + "|" + (e.where || ""); }
+  function entries() { return lsGet(KEY, null) || mem; }
+  function store(a) { if (!lsSet(KEY, a)) mem = a; }
+  W.__logEntries = entries;
+  W.__log = function (kind, o) {
+    try {
+      o = o || {}; var ctx = {}; try { ctx = (W.__ctx && W.__ctx()) || {}; } catch (e) {}
+      var e = { at: Date.now(), last: Date.now(), n: 1, kind: kind, msg: clean(o.msg || kind, 400), stack: clean(o.stack || "", 1200), code: clip(o.code || "", 80), where: o.where || ctx.where || "", act: o.act || ctx.act || "", ver: W.APP_VERSION, sid: sid, online: navigator.onLine };
+      if (o.email) e.email = clip(o.email, 60);
+      if (/ResizeObserver loop/i.test(e.msg)) return;
+      var a = entries(), s = sigOf(e), dup = null;
+      for (var i = a.length - 1; i >= 0 && i > a.length - 16; i--) if (sigOf(a[i]) === s) { dup = a[i]; break; }
+      if (dup) { dup.n = (dup.n || 1) + 1; dup.last = e.at; } else { a.push(e); if (a.length > MAX) a.splice(0, a.length - MAX); }
+      store(a);
+      if (!o.localOnly) remote(e, s);
+    } catch (x) {}
+  };
+  function remote(e, s) {
+    var now = Date.now(); if (sent[s] && now - sent[s] < 600000) return; if (sentCount >= 25) return;
+    sent[s] = now; sentCount++; if (sink) push(e); else if (buffer.length < 15) buffer.push(e);
+  }
+  function push(e) {
+    W.__geo().then(function (g) {
+      var d = { at: e.at, kind: e.kind, msg: e.msg, stack: e.stack, code: e.code, where: e.where, act: e.act, ver: e.ver, sid: e.sid, online: e.online, dev: devShort(), tz: dev.tz || "" };
+      if (e.email) d.email = e.email;
+      if (g) { if (g.geo) d.geo = g.geo; if (g.ip && String(e.kind).indexOf("login") === 0) d.ip = g.ip; }
+      Object.keys(d).forEach(function (k) { if (d[k] === "" || d[k] == null) delete d[k]; });
+      try { sink(d); } catch (x) {}
+    });
+  }
+  W.__setSink = function (fn) { sink = fn; var b = buffer; buffer = []; b.forEach(push); };
+
+  /* ---------- capture automatique ---------- */
+  W.addEventListener("error", function (ev) {
+    var t = ev.target;
+    if (t && t !== W && t.tagName) {
+      var rel = (t.rel || "").toLowerCase();
+      if (t.tagName === "LINK" && rel !== "stylesheet") return;
+      W.__log("resource", { msg: "Chargement impossible : " + (t.src || t.href || t.tagName) });
+      if (!W.__ready) armRescue(2500); return;
+    }
+    W.__log("error", { msg: ev.message || (ev.error && ev.error.message) || "Erreur inconnue", stack: (ev.error && ev.error.stack) || (ev.filename ? ev.filename + ":" + ev.lineno + ":" + ev.colno : "") });
+    if (!W.__ready) armRescue(3500);
+  }, true);
+  W.addEventListener("unhandledrejection", function (ev) { var r = ev.reason || {}; W.__log("promise", { msg: r.message || String(r), stack: r.stack, code: r.code }); });
+  W.addEventListener("offline", function () { W.__log("net", { msg: "Connexion internet perdue", localOnly: true }); });
+  W.addEventListener("online", function () { W.__log("net", { msg: "Connexion internet rétablie", localOnly: true }); });
+  var ce = console.error;
+  console.error = function () { try { W.__log("console", { msg: Array.prototype.map.call(arguments, function (a) { return a && a.message ? a.message : String(a); }).join(" ") }); } catch (e) {} return ce.apply(console, arguments); };
+
+  /* ---------- rapport pour l'IA ---------- */
+  var KINDS = { error: "Erreur JavaScript", promise: "Promesse rejetée", resource: "Chargement impossible", firebase: "Erreur Firebase", action: "Échec d'une action", console: "Message console", login_fail: "Connexion refusée", login_ok: "Connexion réussie", log_denied: "Journal en ligne refusé", net: "Réseau" };
+  var kindName = function (k) { return KINDS[k] || k; }; W.__kindName = kindName;
+  var fmt = W.__fmt = function (ts) { return new Date(ts).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+  W.__logGroup = function (list) {
+    var map = {}, out = [];
+    list.forEach(function (e) {
+      var k = sigOf(e), g = map[k];
+      if (!g) { g = map[k] = { kind: e.kind, msg: e.msg, stack: "", code: e.code, where: e.where, act: e.act, n: 0, first: e.at, last: e.last || e.at, devs: {}, geos: {}, ips: {}, vers: {}, emails: {} }; out.push(g); }
+      g.n += e.n || 1; g.first = Math.min(g.first, e.at); g.last = Math.max(g.last, e.last || e.at);
+      if (e.stack && !g.stack) g.stack = e.stack; if (e.dev) g.devs[e.dev] = 1; if (e.geo) g.geos[e.geo] = 1; if (e.ip) g.ips[e.ip] = 1; if (e.ver) g.vers[e.ver] = 1; if (e.email) g.emails[e.email] = 1;
+    });
+    out.sort(function (a, b) { return b.last - a.last; }); return out;
+  };
+  var keys = function (o) { return Object.keys(o).join(" | "); };
+  W.__logReport = function (list, title) {
+    var g = W.__logGroup(list), L = [], total = list.reduce(function (a, e) { return a + (e.n || 1); }, 0);
+    L.push("=== " + title + " — Enky Suivi ===");
+    L.push("Contexte pour l'IA : application web mono-fichier (index.html, JavaScript natif) hébergée sur GitHub Pages, avec Firebase Authentication et Firestore. Merci d'identifier la cause de chaque problème ci-dessous et de proposer un correctif précis (code à modifier).");
+    L.push("Version de l'application : " + W.APP_VERSION);
+    L.push("Rapport généré le : " + fmt(Date.now()) + " (" + (dev.tz || "fuseau inconnu") + ")");
+    L.push("Appareil de ce rapport : " + devLong());
+    L.push("Événements : " + total + " au total, " + g.length + " distinct(s)");
+    if (!g.length) L.push("\nAucun événement enregistré.");
+    g.forEach(function (x, i) {
+      L.push("\n[" + (i + 1) + "] " + kindName(x.kind).toUpperCase() + " · " + x.n + " fois · du " + fmt(x.first) + " au " + fmt(x.last));
+      if (x.where || x.act) L.push("Page : " + (x.where || "?") + (x.act ? " · Dernière action : " + x.act : ""));
+      L.push("Message : " + x.msg); if (x.code) L.push("Code : " + x.code);
+      if (keys(x.emails)) L.push("E-mail saisi (masqué) : " + keys(x.emails));
+      if (keys(x.devs)) L.push("Appareil(s) : " + keys(x.devs)); if (keys(x.geos)) L.push("Lieu approximatif : " + keys(x.geos)); if (keys(x.ips)) L.push("IP : " + keys(x.ips));
+      if (keys(x.vers)) L.push("Version(s) : " + keys(x.vers));
+      if (x.stack) L.push("Trace :\n  " + x.stack.split("\n").join("\n  "));
+    });
+    return L.join("\n");
+  };
+  W.__copy = function (text) {
+    return (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { return true; }, function () {
+      var ta = document.createElement("textarea"); ta.value = text; ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok;
+    });
+  };
+  W.__download = function (text, name) { var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  var stamp = function () { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
+
+  /* ---------- fenêtre du journal (fonctionne sans connexion) ---------- */
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+  W.__showLog = function () {
+    var old = document.getElementById("logview"); if (old) old.remove();
+    var list = entries(), g = W.__logGroup(list), el = document.createElement("div"); el.id = "logview";
+    var css = "#logview{position:fixed;inset:0;z-index:3000;background:rgba(20,8,6,.62);display:flex;align-items:flex-end;justify-content:center;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif}" +
+      "#logview .lv{background:#fffdfb;color:#2b1f1c;width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 14px calc(18px + env(safe-area-inset-bottom,0px))}" +
+      "html[data-theme=dark] #logview .lv{background:#1b1110;color:#f3e9e4}" +
+      "@media(min-width:700px){#logview{align-items:center}#logview .lv{border-radius:20px}}" +
+      "#logview h3{margin:0 0 4px;font-size:19px;color:#5c0d0d}html[data-theme=dark] #logview h3{color:#f1c4bb}" +
+      "#logview .mt{font-size:12.5px;color:#7a6a64;margin:2px 0 10px;line-height:1.4}#logview .bt{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}" +
+      "#logview button,#logview a.b{border:0;border-radius:10px;padding:9px 13px;background:#b3221f;color:#fff;font-weight:600;font-size:13.5px;text-decoration:none;cursor:pointer}" +
+      "#logview .g{background:#efe7e1;color:#2b1f1c}html[data-theme=dark] #logview .g{background:#2e2321;color:#f3e9e4}" +
+      "#logview details{border:1px solid #e3d8cf;border-radius:12px;padding:9px 11px;margin:8px 0}html[data-theme=dark] #logview details{border-color:#392725}" +
+      "#logview summary{cursor:pointer;font-size:13.5px;font-weight:600;line-height:1.35}#logview summary small{color:#b3221f;font-weight:700}" +
+      "#logview pre{white-space:pre-wrap;word-break:break-word;font-size:11.5px;margin:8px 0 0;max-height:200px;overflow:auto}";
+    el.innerHTML = "<style>" + css + "</style><div class='lv'><h3>Journal d'erreurs de cet appareil</h3><div class='mt'>" + esc(devLong()) + "<br>Version " + esc(W.APP_VERSION) + " · " + list.length + " enregistrement(s)</div>" +
+      "<div class='bt'><button id='lvCopy'>Copier pour l'IA</button><button id='lvDl' class='g'>Télécharger (.txt)</button><a class='b g' href='diagnostic.html'>Diagnostic complet</a></div>" +
+      (g.length ? g.map(function (x) { return "<details><summary><small>" + esc(kindName(x.kind)) + (x.n > 1 ? " ×" + x.n : "") + "</small> · " + esc(x.msg.split("\n")[0].slice(0, 110)) + "<div class='mt' style='margin:2px 0 0'>" + esc(fmt(x.last)) + (x.where ? " · page " + esc(x.where) : "") + "</div></summary><pre>" + esc((x.code ? "Code : " + x.code + "\n" : "") + (x.act ? "Dernière action : " + x.act + "\n" : "") + (x.stack || "")) + "</pre></details>"; }).join("") : "<p class='mt'>Aucune erreur enregistrée sur cet appareil.</p>") +
+      "<div class='bt'><button id='lvClear' class='g'>Vider le journal</button><button id='lvClose' class='g'>Fermer</button></div></div>";
+    document.body.appendChild(el);
+    var rep = function () { return W.__logReport(entries(), "Journal d'erreurs de l'appareil"); };
+    el.querySelector("#lvCopy").onclick = function () { var b = this; W.__copy(rep()).then(function (ok) { b.textContent = ok ? "Copié ✓" : "Copie impossible"; }); };
+    el.querySelector("#lvDl").onclick = function () { W.__download(rep(), "Enky_Journal_" + stamp() + ".txt"); };
+    el.querySelector("#lvClear").onclick = function () { if (confirm("Vider le journal de cet appareil ?")) { store([]); W.__showLog(); } };
+    el.querySelector("#lvClose").onclick = function () { el.remove(); };
+    el.addEventListener("click", function (e) { if (e.target === el) el.remove(); });
+  };
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var v = document.getElementById("logview"); if (v) v.remove(); } });
+
+  /* ---------- écran de secours si l'appli ne démarre pas ---------- */
+  var rT = null, rAt = 0;
+  function armRescue(ms) { var at = Date.now() + ms; if (rT && rAt <= at) return; clearTimeout(rT); rAt = at; rT = setTimeout(rescue, ms); }
+  function rescue() {
+    if (W.__ready) return; var sp = document.getElementById("splash"); if (!sp || sp.querySelector(".sp-rescue")) return;
+    var last = entries().slice(-1)[0], why = last && last.kind === "resource" ? "Des composants en ligne (Firebase) n'ont pas pu être chargés : connexion internet absente, instable ou bloquée." : "L'application met trop de temps à démarrer ou a rencontré une erreur.";
+    var box = document.createElement("div"); box.className = "sp-rescue";
+    box.style.cssText = "margin-top:22px;max-width:320px;text-align:center;padding:0 16px;font-size:14px;line-height:1.45;animation:spUp .4s ease both";
+    box.innerHTML = "<div style='font-weight:700;font-size:16px;margin-bottom:6px'>L'application n'a pas pu démarrer</div><div style='opacity:.88'>" + esc(why) + "</div>" +
+      "<div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px'>" +
+      "<button id='rsRetry' style='border:0;border-radius:10px;padding:10px 14px;background:#fff;color:#7a1010;font-weight:700'>Réessayer</button>" +
+      "<button id='rsLog' style='border:1px solid rgba(255,255,255,.5);border-radius:10px;padding:10px 14px;background:transparent;color:#fff;font-weight:600'>Voir le journal</button>" +
+      "<button id='rsWait' style='border:0;background:none;color:rgba(255,255,255,.75);text-decoration:underline;padding:10px 6px'>Continuer d'attendre</button></div>" +
+      "<div style='margin-top:10px;font-size:11.5px;opacity:.6'>Version " + esc(W.APP_VERSION) + "</div>";
+    sp.appendChild(box);
+    box.querySelector("#rsRetry").onclick = function () { location.reload(); };
+    box.querySelector("#rsLog").onclick = function () { W.__showLog(); };
+    box.querySelector("#rsWait").onclick = function () { box.remove(); rT = null; armRescue(15000); };
+  }
+  armRescue(9000);
+})();
+</script>
 <script>try{if(localStorage.getItem("theme")==="dark"){document.documentElement.setAttribute("data-theme","dark");document.querySelector('meta[name=theme-color]').setAttribute("content","#3d0a0a")}}catch(e){}</script>
 <title>Enky Suivi</title>
 <link rel="manifest" href="manifest.json">
@@ -255,6 +457,10 @@ input[type="checkbox"]:focus-visible,input[type="radio"]:focus-visible{outline:n
 .gl li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);flex-shrink:0}
 .chkrow{display:flex;gap:11px;align-items:flex-start;margin-top:14px;font-size:14px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0;cursor:pointer}
 .chkrow input{margin-top:1px}
+details.lg{border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin:8px 0;background:var(--surface)}
+details.lg summary{cursor:pointer;font-size:13.5px;font-weight:600;line-height:1.35}
+details.lg summary .k{color:var(--red2);font-weight:700;font-size:12px}
+details.lg pre{white-space:pre-wrap;word-break:break-word;font-size:11.5px;margin:8px 0 0;max-height:180px;overflow:auto;color:var(--ink-soft)}
 /* ---------- Cards, KPI ---------- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow);transition:transform .18s ease,box-shadow .18s ease}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -353,9 +559,9 @@ canvas#pad{border:1.5px dashed #cfa2a2;border-radius:12px;width:100%;height:150p
 </div>
 <script>
 (function(){var t0=Date.now(),done=false;
-window.__hideSplash=function(){if(done)return;done=true;var el=document.getElementById('splash');if(!el)return;
+window.__hideSplash=function(){if(done)return;done=true;window.__ready=true;var el=document.getElementById('splash');if(!el)return;
 var w=Math.max(0,850-(Date.now()-t0));setTimeout(function(){el.classList.add('out');setTimeout(function(){el.remove()},480)},w)};
-setTimeout(window.__hideSplash,7000)})();
+})();
 </script>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/><path d="M10 20v-6h4v6"/></symbol>
@@ -389,6 +595,7 @@ setTimeout(window.__hideSplash,7000)})();
     <p style="margin:14px 0 6px"><button class="btn" style="width:100%">Se connecter</button></p>
     <p class="muted" id="lerr" style="color:#a01818;text-align:center"></p>
     <p style="text-align:center"><a href="#" id="forgot" class="muted">Mot de passe oublié</a></p>
+    <p style="text-align:center;margin-top:-6px"><a href="#" id="logLink" class="muted" style="font-size:12.5px">Un problème ? Voir le journal</a></p>
   </form>
 </div>
 
@@ -426,7 +633,7 @@ setTimeout(window.__hideSplash,7000)})();
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, getDocs, runTransaction, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, getDocs, runTransaction, writeBatch, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB8rzfR2Cs5hDqS-LMwXyZz4TH3pz0LHmM",
@@ -455,6 +662,14 @@ catch (e) { db = initializeFirestore(app, {}); }
 const STATUTS = ["Nouveau","Devis envoyé","Relancé","Négociation","Gagné","Perdu","En veille"];
 const bcls = s => "b-" + String(s).split(" ")[0];
 let user = null, route = "home", filter = "Tous", search = "";
+// ---------- journal : contexte et envoi vers Firestore (collection "logs") ----------
+let lastAct = "", logBlocked = false, remoteLogs = null;
+window.__ctx = () => ({ where: route, act: lastAct });
+window.__setSink(async d => {
+  if (logBlocked) return;
+  try { await addDoc(collection(db, "logs"), d); }
+  catch (e) { if (/permission/i.test((e.code || "") + (e.message || ""))) { logBlocked = true; window.__log("log_denied", { msg: "Écriture du journal en ligne refusée par les règles Firestore (collection logs).", code: e.code, localOnly: true }); } }
+});
 let contacts = [], docs = [], settings = {}, edit = null, unsub = [];
 let periode = localStorage.getItem("periode") || "mois";
 const DEFAULT_SLOGAN = "Web  |  Design graphique  |  Formation  |  Assistance IT";
@@ -469,7 +684,7 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const money = n => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " FCFA";
 const num = v => Number(String(v).replace(/\s/g, "").replace(",", ".")) || 0;
 const fdate = d => d ? d.split("-").reverse().join("/") : "";
-function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
+function toast(m) { if (/^(Échec|Erreur|Envoi impossible|Chargement impossible)/i.test(m)) window.__log("action", { msg: m }); const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
 
 // ---------- nombre en lettres ----------
 function enLettres(n) {
@@ -505,7 +720,7 @@ onAuthStateChanged(auth, u => {
   if (!u) { $("#app").hidden = true; $("#login").hidden = false; welcomeRan = false; dataLoaded.c = dataLoaded.d = false; try { sessionStorage.removeItem("greeted"); } catch (e) {} window.__hideSplash(); return; }
   $("#login").hidden = true; $("#app").hidden = false;
   initHistory();
-  const err = e => toast("Erreur de synchronisation : " + e.code);
+  const err = e => { window.__log("firebase", { msg: "Erreur de synchronisation", code: e.code }); toast("Erreur de synchronisation : " + e.code); };
   unsub.push(onSnapshot(collection(db, "contacts"), s => { contacts = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.c = true; render(); }, err));
   unsub.push(onSnapshot(collection(db, "documents"), s => { docs = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.d = true; render(); }, err));
   unsub.push(onSnapshot(doc(db, "settings", "main"), s => { settings = s.exists() ? s.data() : {}; try { localStorage.setItem("slogan", settings.slogan ?? DEFAULT_SLOGAN); } catch (e) {} render(); }, err));
@@ -517,9 +732,16 @@ onAuthStateChanged(auth, u => {
 $("#loginSlogan").textContent = localStorage.getItem("slogan") ?? DEFAULT_SLOGAN;
 $("#loginForm").addEventListener("submit", async e => {
   e.preventDefault(); $("#lerr").textContent = "";
-  try { await signInWithEmailAndPassword(auth, $("#lemail").value.trim(), $("#lpass").value); }
-  catch (er) { $("#lerr").textContent = "Connexion refusée : vérifiez l'e-mail et le mot de passe."; }
+  const mail = $("#lemail").value.trim();
+  try { await signInWithEmailAndPassword(auth, mail, $("#lpass").value); window.__log("login_ok", { msg: "Connexion réussie", email: window.__mask(mail) }); }
+  catch (er) {
+    const code = (er && er.code) || "inconnu";
+    const LOGIN_MSG = { "auth/invalid-credential": "E-mail ou mot de passe incorrect.", "auth/wrong-password": "E-mail ou mot de passe incorrect.", "auth/user-not-found": "E-mail ou mot de passe incorrect.", "auth/invalid-email": "Adresse e-mail invalide.", "auth/too-many-requests": "Trop de tentatives : patientez quelques minutes avant de réessayer.", "auth/network-request-failed": "Pas de connexion internet : vérifiez votre réseau.", "auth/user-disabled": "Ce compte est désactivé." };
+    $("#lerr").textContent = LOGIN_MSG[code] || `Connexion impossible (${code}). Touchez « Voir le journal » ci-dessous.`;
+    window.__log("login_fail", { msg: "Échec de connexion : " + code, code, email: window.__mask(mail) });
+  }
 });
+$("#logLink").addEventListener("click", e => { e.preventDefault(); window.__showLog(); });
 $("#forgot").addEventListener("click", async e => {
   e.preventDefault(); const m = $("#lemail").value.trim();
   if (!m) { $("#lerr").textContent = "Saisissez d'abord votre e-mail."; return; }
@@ -1000,6 +1222,33 @@ function startWelcome() {
     if (fresh) showGreeting(maybePromo); else maybePromo();
   }
 }
+function logCard() {
+  const n = (window.__logEntries() || []).length, geoOn = localStorage.getItem("enky_geo_off") !== "1";
+  let rb = "";
+  if (remoteLogs && remoteLogs.loading) rb = `<p class="muted">Chargement du journal en ligne…</p>`;
+  else if (remoteLogs && remoteLogs.error) rb = `<div class="banner" style="margin-top:10px">Lecture impossible (${esc(remoteLogs.error)}). Vérifiez les règles Firestore de la collection « logs ».</div>`;
+  else if (remoteLogs && remoteLogs.list) {
+    const g = window.__logGroup(remoteLogs.list);
+    rb = g.length ? `<p class="muted" style="margin:10px 0 0">${remoteLogs.list.length} événement(s) en ligne (30 derniers jours), ${g.length} distinct(s).</p>` + g.map(x => `<details class="lg"><summary><span class="k">${esc(window.__kindName(x.kind))}${x.n > 1 ? " ×" + x.n : ""}</span> · ${esc(x.msg.split("\n")[0].slice(0, 110))}<div class="muted" style="font-weight:400">${esc(window.__fmt(x.last))}${x.where ? " · " + esc(x.where) : ""}${Object.keys(x.devs).length ? " · " + esc(Object.keys(x.devs)[0]) : ""}${Object.keys(x.geos).length ? " · " + esc(Object.keys(x.geos)[0]) : ""}</div></summary><pre>${esc((x.code ? "Code : " + x.code + "\n" : "") + (x.act ? "Dernière action : " + x.act + "\n" : "") + (Object.keys(x.emails).length ? "E-mail (masqué) : " + Object.keys(x.emails).join(", ") + "\n" : "") + (Object.keys(x.ips).length ? "IP : " + Object.keys(x.ips).join(", ") + "\n" : "") + (x.stack || ""))}</pre></details>`).join("")
+      + `<div class="row" style="margin-top:10px"><button class="btn sm" data-act="logRemoteCopy">Copier pour l'IA</button><button class="btn sm danger" data-act="logRemoteClear">Vider le journal en ligne</button></div>`
+      : `<p class="muted" style="margin:10px 0 0">Aucune erreur enregistrée en ligne.</p>`;
+  }
+  return `<div class="card"><b>Journal d'erreurs</b>
+    <p class="muted" style="margin:4px 0 0">Version ${esc(window.APP_VERSION)}. Les erreurs sont notées sur cet appareil et envoyées au journal en ligne : copiez le rapport et transmettez-le à l'IA pour corriger plus vite.</p>
+    <div class="row" style="margin-top:10px"><button class="btn sm" data-act="logLocal">Journal de cet appareil (${n})</button><button class="btn sm grey" data-act="logRemote">${remoteLogs && remoteLogs.list ? "Actualiser" : "Charger"} le journal en ligne</button></div>
+    ${rb}
+    <label class="chkrow"><input type="checkbox" data-change="geoPref" ${geoOn ? "checked" : ""}><span>Noter ma localisation approximative (ville, pays) dans le journal</span></label></div>`;
+}
+async function loadRemoteLogs() {
+  remoteLogs = { loading: true }; render();
+  try {
+    const s = await getDocs(query(collection(db, "logs"), orderBy("at", "desc"), limit(150)));
+    const all = s.docs.map(d => ({ id: d.id, ...d.data() })), cut = Date.now() - 30 * 86400000, old = all.filter(x => x.at < cut);
+    if (old.length) { const b = writeBatch(db); old.slice(0, 100).forEach(x => b.delete(doc(db, "logs", x.id))); b.commit().catch(() => {}); }   // purge > 30 jours
+    remoteLogs = { list: all.filter(x => x.at >= cut) };
+  } catch (e) { remoteLogs = { error: e.code || String(e) }; window.__log("firebase", { msg: "Lecture du journal en ligne impossible", code: e.code, localOnly: true }); }
+  render();
+}
 function viewSettings() {
   const s = settings;
   const dark = document.documentElement.dataset.theme === "dark";
@@ -1031,6 +1280,7 @@ function viewSettings() {
     <canvas id="pad" width="600" height="300"></canvas>
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="sigSave">Enregistrer la signature</button><button class="btn sm grey" data-act="sigClear">Effacer</button>
     <label class="btn sm alt" style="margin:0">Importer une image<input type="file" accept="image/*" id="sigFile" hidden></label></div></div>
+  ${logCard()}
   <div class="card"><b>Données</b>
     <div class="row" style="margin-top:8px"><button class="btn sm" data-act="exportXlsx">Exporter en Excel</button>
     <label class="btn sm alt" style="margin:0">Importer des contacts (Excel)<input type="file" accept=".xlsx,.xls,.csv" id="xlsFile" hidden></label></div>
@@ -1599,6 +1849,14 @@ const acts = {
   nav: d => go(d.r),
   theme: d => setTheme(d.t),
   closeLayer: () => closeLayer(),
+  logLocal: () => window.__showLog(),
+  logRemote: () => loadRemoteLogs(),
+  logRemoteCopy: async () => { const ok = await window.__copy(window.__logReport((remoteLogs && remoteLogs.list) || [], "Journal en ligne (Firebase)")); toast(ok ? "Rapport copié : collez-le dans votre conversation avec l'IA." : "Copie impossible."); },
+  logRemoteClear: async () => {
+    if (!confirm("Supprimer tout le journal en ligne ? Cette action est définitive.")) return;
+    try { for (let i = 0; i < 8; i++) { const s = await getDocs(query(collection(db, "logs"), limit(300))); if (s.empty) break; const b = writeBatch(db); s.docs.forEach(x => b.delete(x.ref)); await b.commit(); } remoteLogs = { list: [] }; toast("Journal en ligne vidé."); render(); }
+    catch (e) { toast("Échec : " + (e.code || e)); }
+  },
   promoNow: () => { promoIdle = daysIdle(); promoIsAuto = false; renderPromo(); },
   promoNext: () => { promoIdx++; localStorage.setItem("promoIdx", promoIdx); renderPromo(); },
   promoCopy: async () => {
@@ -1683,13 +1941,14 @@ const PDF_ACTS = ["pdf", "facture", "saveRecu", "saveDocPdf", "solder", "recuPdf
 document.addEventListener("click", async e => {
   const el = e.target.closest("[data-act]"); if (!el || !acts[el.dataset.act]) return;
   if (el.tagName === "A") e.preventDefault();
-  const a = el.dataset.act;
+  const a = el.dataset.act; lastAct = a;
   try { if (PDF_ACTS.includes(a)) await needPdf(); else if (XLS_ACTS.includes(a)) await needXls(); }
   catch (er) { return toast("Chargement impossible : vérifiez la connexion internet."); }
   acts[a](el.dataset, el);
 });
 document.addEventListener("change", async e => {
   const t = e.target;
+  if (t.dataset.change === "geoPref") { try { localStorage.setItem("enky_geo_off", t.checked ? "0" : "1"); } catch (er) {} return; }
   if (t.dataset.change === "docStatus") {
     const d0 = docs.find(x => x.id === t.dataset.id), p0 = d0 ? etatDoc(d0).paye : 0;
     if (d0 && t.value === "Refusé" && p0 > 0 && !confirm(`Ce document a déjà reçu ${money(p0)} de paiements. Le marquer « Refusé » bloquera tout nouvel encaissement. Continuer ?`)) { t.value = d0.statut; syncSel(t); }
