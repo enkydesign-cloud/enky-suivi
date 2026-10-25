@@ -739,8 +739,8 @@ onAuthStateChanged(auth, u => {
   $("#login").hidden = true; $("#app").hidden = false;
   initHistory();
   const err = e => { window.__log("firebase", { msg: "Erreur de synchronisation", code: e.code }); toast("Erreur de synchronisation : " + e.code); };
-  unsub.push(onSnapshot(collection(db, "contacts"), s => { contacts = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.c = true; render(); }, err));
-  unsub.push(onSnapshot(collection(db, "documents"), s => { docs = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.d = true; render(); }, err));
+  unsub.push(onSnapshot(collection(db, "contacts"), s => { contacts = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.c = true; render(); syncClientsFromProformas(); }, err));
+  unsub.push(onSnapshot(collection(db, "documents"), s => { docs = s.docs.map(d => ({ id: d.id, ...d.data() })); dataLoaded.d = true; render(); syncClientsFromProformas(); }, err));
   unsub.push(onSnapshot(doc(db, "settings", "main"), s => { settings = s.exists() ? s.data() : {}; try { localStorage.setItem("slogan", settings.slogan ?? DEFAULT_SLOGAN); } catch (e) {} render(); }, err));
   render();
   window.__hideSplash();
@@ -1500,6 +1500,40 @@ function refreshTot() {
   if (!$("#tot")) return; readDocFields(); const t = totals(edit);
   $("#tot").innerHTML = `<div><span>Sous-total</span><span>${money(t.sub)}</span></div>${t.remise ? `<div><span>Remise</span><span>- ${money(t.remise)}</span></div>` : ""}${edit.tvaOn ? `<div><span>TVA ${edit.tvaTaux} %</span><span>${money(t.tva)}</span></div>` : ""}<div class="big"><span>Total</span><span>${money(t.total)}</span></div><div><span>Acompte ${edit.acomptePct} %</span><span>${money(t.acompte)}</span></div>`;
 }
+// ---------- clients enregistrés automatiquement à partir des proformas ----------
+const normTel = t => String(t || "").replace(/\D/g, "");
+const normNom = t => String(t || "").trim().toLowerCase().replace(/\s+/g, " ");
+function findContactFor(d) {
+  const tel = normTel(d.clientTel), nom = normNom(d.clientNom), ent = normNom(d.clientEntreprise);
+  return contacts.find(c => c.id === d.contactId)
+    || (tel.length >= 8 ? contacts.find(c => normTel(c.tel).slice(-8) === tel.slice(-8)) : null)
+    || (nom ? contacts.find(c => normNom(c.nom) === nom && normNom(c.entreprise) === ent) : null);
+}
+// retourne true si un nouveau client a été créé
+async function ensureClientFromDoc(d) {
+  let c = findContactFor(d), created = false;
+  if (c) {
+    if (c.statut !== "Gagné") { await updateDoc(doc(db, "contacts", c.id), { statut: "Gagné", relance: "" }); c.statut = "Gagné"; c.relance = ""; }
+  } else {
+    const data = { nom: d.clientNom, entreprise: d.clientEntreprise || "", tel: d.clientTel || "", email: "", besoin: d.objet || "", budget: totals(d).total || "", statut: "Gagné", origine: "Direct", partenaire: "", relance: "", notes: "Ajouté automatiquement depuis la proforma " + (d.numero || ""), createdAt: Date.now() };
+    const ref = await addDoc(collection(db, "contacts"), data);
+    c = { id: ref.id, ...data }; contacts.push(c); created = true;
+  }
+  if (d.id && d.contactId !== c.id) { await updateDoc(doc(db, "documents", d.id), { contactId: c.id }); d.contactId = c.id; }
+  return created;
+}
+let clientsSynced = false;
+async function syncClientsFromProformas() {
+  if (clientsSynced || !dataLoaded.c || !dataLoaded.d) return;
+  clientsSynced = true;
+  try { if (localStorage.getItem("clientsSyncV1")) return; } catch (e) {}
+  try {
+    let n = 0;
+    for (const d of docs.filter(x => x.type === "Proforma" && x.statut !== "Refusé" && !x.supersededBy && x.clientNom)) { if (await ensureClientFromDoc(d)) n++; }
+    try { localStorage.setItem("clientsSyncV1", "1"); } catch (e) {}
+    if (n) toast(n + " client" + (n > 1 ? "s" : "") + " ajouté" + (n > 1 ? "s" : "") + " depuis vos proformas.");
+  } catch (e) { clientsSynced = false; }
+}
 async function saveDoc(thenPdf) {
   readDocFields();
   if (!edit.clientNom) return toast("Indiquez le nom du client.");
@@ -1516,7 +1550,10 @@ async function saveDoc(thenPdf) {
       // plus seul : c'est la même vente qui a simplement changé d'étape.
       if (sourceId) await updateDoc(doc(db, "documents", sourceId), { supersededBy: d.id });
     } else { await setDoc(doc(db, "documents", id), d); d.id = id; }
-    closeSheet(); toast("Document enregistré : " + d.numero);
+    closeSheet();
+    let newClient = false;
+    if (d.type === "Proforma" && d.statut !== "Refusé") { try { newClient = await ensureClientFromDoc(d); } catch (e) {} }
+    toast("Document enregistré : " + d.numero + (newClient ? " · client ajouté" : ""));
     if (thenPdf) makePdf(d);
   } catch (e) { toast("Échec : " + e.code + " (vérifiez la connexion)"); }
 }
