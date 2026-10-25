@@ -209,6 +209,7 @@
 <script>try{if(localStorage.getItem("theme")==="dark"){document.documentElement.setAttribute("data-theme","dark");document.querySelector('meta[name=theme-color]').setAttribute("content","#3d0a0a")}}catch(e){}</script>
 <title>Enky Suivi</title>
 <link rel="manifest" href="manifest.json">
+<script>if ("serviceWorker" in navigator) window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preload" as="image" href="icon-192.png">
