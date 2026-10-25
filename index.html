@@ -1517,7 +1517,7 @@ async function ensureClientFromDoc(d) {
   } else {
     const data = { nom: d.clientNom, entreprise: d.clientEntreprise || "", tel: d.clientTel || "", email: "", besoin: d.objet || "", budget: totals(d).total || "", statut: "Gagné", origine: "Direct", partenaire: "", relance: "", notes: "Ajouté automatiquement depuis la proforma " + (d.numero || ""), createdAt: Date.now() };
     const ref = await addDoc(collection(db, "contacts"), data);
-    c = { id: ref.id, ...data }; contacts.push(c); created = true;
+    c = { id: ref.id, ...data }; if (!contacts.some(x => x.id === c.id)) contacts.push(c); created = true;
   }
   if (d.id && d.contactId !== c.id) { await updateDoc(doc(db, "documents", d.id), { contactId: c.id }); d.contactId = c.id; }
   return created;
@@ -1526,11 +1526,13 @@ let clientsSynced = false;
 async function syncClientsFromProformas() {
   if (clientsSynced || !dataLoaded.c || !dataLoaded.d) return;
   clientsSynced = true;
-  try { if (localStorage.getItem("clientsSyncV1")) return; } catch (e) {}
+  await new Promise(r => setTimeout(r, 1500));
+  try { if (localStorage.getItem("clientsSyncV2") || (settings && settings.clientsSyncV2)) return; } catch (e) {}
   try {
+    await setDoc(doc(db, "settings", "main"), { clientsSyncV2: true }, { merge: true });
     let n = 0;
     for (const d of docs.filter(x => x.type === "Proforma" && x.statut !== "Refusé" && !x.supersededBy && x.clientNom)) { if (await ensureClientFromDoc(d)) n++; }
-    try { localStorage.setItem("clientsSyncV1", "1"); } catch (e) {}
+    try { localStorage.setItem("clientsSyncV2", "1"); } catch (e) {}
     if (n) toast(n + " client" + (n > 1 ? "s" : "") + " ajouté" + (n > 1 ? "s" : "") + " depuis vos proformas.");
   } catch (e) { clientsSynced = false; }
 }
