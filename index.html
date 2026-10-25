@@ -942,6 +942,7 @@ function contactCard(c) {
     ${c.createdAt ? `<div class="muted" style="margin-top:2px">Enregistré le ${fdate(ymd(new Date(c.createdAt)))} · ${anciennete(c.createdAt)}</div>` : ""}
     <div class="row" style="margin-top:10px">
       ${c.tel ? `<a class="btn sm alt" style="text-decoration:none" target="_blank" href="${waLink(c.tel, msg)}">WhatsApp</a><a class="btn sm alt" style="text-decoration:none" href="tel:${esc(c.tel)}">Appeler</a>` : ""}
+      <button class="btn sm" data-act="voirContact" data-id="${c.id}">Voir</button>
       <button class="btn sm grey" data-act="newDoc" data-id="${c.id}">+ Devis</button>
       <button class="btn sm grey" data-act="editContact" data-id="${c.id}">Modifier</button>
       <span class="sp"></span>
@@ -1428,6 +1429,7 @@ function sinceBlock(c) {
 function contactForm(c) {
   edit = { ...c };
   openSheet(`<h3>${c.id ? "Modifier" : "Nouveau"} contact</h3>
+  ${("contacts" in navigator && "ContactsManager" in window) ? `<button class="btn alt" data-act="pickPhoneContact" style="width:100%;margin-bottom:6px">Choisir dans mon répertoire</button>` : ""}
   ${sinceBlock(c)}
   <label>Nom *</label><input id="c_nom" value="${esc(c.nom)}">
   <label>Entreprise</label><input id="c_ent" value="${esc(c.entreprise)}">
@@ -1443,6 +1445,66 @@ function contactForm(c) {
   ${c.id && !c.createdAt ? `<label>Client depuis le (facultatif)</label>${dateField("c_since", "")}` : ""}
   <label>Notes</label><textarea id="c_notes">${esc(c.notes)}</textarea>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="saveContact">Enregistrer</button><button class="btn grey" data-act="closeSheet">Annuler</button><span class="sp"></span>${c.id ? `<button class="btn danger sm" data-act="delContact">Supprimer</button>` : ""}</div>`);
+}
+async function pickPhoneContact() {
+  try {
+    const r = await navigator.contacts.select(["name", "tel", "email"], { multiple: false });
+    if (!r || !r.length) return;
+    const p = r[0], nom = (p.name || [])[0] || "", tel = (p.tel || [])[0] || "", email = (p.email || [])[0] || "";
+    if (nom) $("#c_nom").value = nom;
+    if (tel) $("#c_tel").value = String(tel).replace(/[^\d+]/g, "");
+    if (email) $("#c_email").value = email;
+    toast("Contact récupéré : complétez si besoin puis Enregistrer.");
+  } catch (e) { toast("Impossible d'ouvrir le répertoire du téléphone."); }
+}
+function docsOfContact(c) {
+  const tel = normTel(c.tel), nom = normNom(c.nom), ent = normNom(c.entreprise);
+  return docs.filter(d => {
+    if (d.contactId) return d.contactId === c.id;
+    const dt = normTel(d.clientTel);
+    return (tel.length >= 8 && dt.length >= 8 && dt.slice(-8) === tel.slice(-8)) || (nom && normNom(d.clientNom) === nom && normNom(d.clientEntreprise) === ent);
+  }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function contactFiche(id) {
+  const c = contacts.find(x => x.id === id); if (!c) return;
+  const list = docsOfContact(c).filter(d => !d.supersededBy);
+  let tot = 0, enc = 0, ch = 0, reste = 0, nb = 0;
+  list.filter(d => d.statut !== "Refusé").forEach(d => {
+    nb++; const t = totals(d).total, pay = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0);
+    tot += t; enc += pay; ch += (d.paiements || []).reduce((a, p) => a + num(p.charges), 0); reste += Math.max(t - pay, 0);
+  });
+  const projets = list.map(d => {
+    const t = totals(d).total, pay = (d.paiements || []).reduce((a, p) => a + num(p.montant), 0), rest = Math.max(t - pay, 0), chd = (d.paiements || []).reduce((a, p) => a + num(p.charges), 0);
+    const refuse = d.statut === "Refusé", solde = t > 0 && rest <= 0;
+    return `<div class="card" ${refuse ? 'style="opacity:.6"' : ""}>
+      <div class="row"><b>${esc(d.numero)}</b><span class="muted">${esc(d.type)}</span><span class="sp"></span><span class="badge ${bcls(d.statut)}">${esc(d.statut)}</span></div>
+      <div class="muted" style="margin-top:4px">${esc(d.objet || "—")} · ${fdate(d.date)}</div>
+      <div style="margin:4px 0;font-weight:700;color:var(--red)">${money(t)}</div>
+      ${pay > 0 ? `<div class="muted">Réglé : ${money(pay)} — ${solde ? `<b style="color:var(--ok)">Soldé</b>` : `Reste : <b style="color:var(--red2)">${money(rest)}</b>`} · Bénéfice net : <b style="color:var(--ok)">${money(pay - chd)}</b></div>` : ""}
+      <div class="row" style="margin-top:8px">${docOutputs(d).map(o => docDlBtn(o.act, d.id, o.label)).join("")}${(d.paiements || []).map((p, i) => `<button class="btn sm grey ico" data-act="recuPdf" data-id="${d.id}" data-i="${i}" title="Télécharger le reçu"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Reçu ${esc(p.numero || (i + 1))}</button>`).join("")}</div>
+    </div>`;
+  }).join("");
+  const msg = `Bonjour ${c.nom || ""}, `;
+  openSheet(`<div class="row"><div class="avatar">${initials(c.nom)}</div><div style="min-width:0"><h3 style="margin:0">${esc(c.nom)}</h3>${c.entreprise ? `<div class="muted">${esc(c.entreprise)}</div>` : ""}</div><span class="sp"></span><span class="badge ${bcls(c.statut)}">${esc(c.statut)}</span></div>
+  ${c.createdAt ? `<div class="muted" style="margin-top:6px">Client depuis le ${fdate(ymd(new Date(c.createdAt)))} · ${anciennete(c.createdAt)}</div>` : ""}
+  ${c.tel || c.email ? `<div class="muted" style="margin-top:4px">${c.tel ? esc(c.tel) : ""}${c.tel && c.email ? " · " : ""}${c.email ? esc(c.email) : ""}</div>` : ""}
+  ${c.origine === "Partenaire" ? `<div class="muted">Via ${esc(c.partenaire || "un partenaire")}</div>` : ""}
+  ${c.notes ? `<div class="muted" style="margin-top:4px">Notes : ${esc(c.notes)}</div>` : ""}
+  <div class="kpis" style="margin-top:12px">
+    <div class="kpi"><b>${nb}</b><small>Projet${nb > 1 ? "s" : ""}</small></div>
+    <div class="kpi"><b>${money(tot)}</b><small>Total des projets</small></div>
+    <div class="kpi"><b>${money(enc)}</b><small>Encaissé</small></div>
+    <div class="kpi"><b>${money(reste)}</b><small>Reste à payer</small></div>
+    <div class="kpi"><b style="color:var(--ok)">${money(enc - ch)}</b><small>Bénéfice net cumulé</small></div>
+  </div>
+  <h2>Projets réalisés</h2>
+  ${projets || `<div class="card muted">Aucun document pour ce client pour l'instant.</div>`}
+  <div class="row" style="margin-top:14px">
+    ${c.tel ? `<a class="btn sm alt" style="text-decoration:none" target="_blank" href="${waLink(c.tel, msg)}">WhatsApp</a><a class="btn sm alt" style="text-decoration:none" href="tel:${esc(c.tel)}">Appeler</a>` : ""}
+    <button class="btn sm grey" data-act="newDoc" data-id="${c.id}">+ Devis</button>
+    <button class="btn sm grey" data-act="editContact" data-id="${c.id}">Modifier</button>
+    <button class="btn sm grey" data-act="closeSheet">Fermer</button>
+  </div>`);
 }
 async function saveContact() {
   const nom = $("#c_nom").value.trim();
@@ -2012,6 +2074,8 @@ const acts = {
   logout: () => signOut(auth),
   newContact: () => contactForm({ statut: "Nouveau", origine: "Direct" }),
   editContact: d => contactForm(contacts.find(c => c.id === d.id)),
+  voirContact: d => contactFiche(d.id),
+  pickPhoneContact,
   saveContact, closeSheet,
   delContact: async () => { if (confirm("Supprimer ce contact ?")) { await deleteDoc(doc(db, "contacts", edit.id)); closeSheet(); toast("Contact supprimé."); } },
   quickDelContact: async d => { if (confirm("Supprimer ce contact ? Cette action est définitive.")) { try { await deleteDoc(doc(db, "contacts", d.id)); toast("Contact supprimé."); } catch (e) { toast("Échec : " + e.code); } } },
