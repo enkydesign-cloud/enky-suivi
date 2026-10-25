@@ -944,7 +944,6 @@ function contactCard(c) {
       ${c.tel ? `<a class="btn sm alt" style="text-decoration:none" target="_blank" href="${waLink(c.tel, msg)}">WhatsApp</a><a class="btn sm alt" style="text-decoration:none" href="tel:${esc(c.tel)}">Appeler</a>` : ""}
       <button class="btn sm" data-act="voirContact" data-id="${c.id}">Voir</button>
       <button class="btn sm grey" data-act="newDoc" data-id="${c.id}">+ Devis</button>
-      <button class="btn sm grey" data-act="editContact" data-id="${c.id}">Modifier</button>
       <span class="sp"></span>
       <button class="btn sm danger" data-act="quickDelContact" data-id="${c.id}" title="Supprimer ce contact">🗑</button>
     </div></div>`;
@@ -1429,7 +1428,7 @@ function sinceBlock(c) {
 function contactForm(c) {
   edit = { ...c };
   openSheet(`<h3>${c.id ? "Modifier" : "Nouveau"} contact</h3>
-  ${("contacts" in navigator && "ContactsManager" in window) ? `<button class="btn alt" data-act="pickPhoneContact" style="width:100%;margin-bottom:6px">Choisir dans mon répertoire</button>` : ""}
+  <button class="btn alt" data-act="pickPhoneContact" style="width:100%;margin-bottom:6px">Choisir dans mon répertoire</button>
   ${sinceBlock(c)}
   <label>Nom *</label><input id="c_nom" value="${esc(c.nom)}">
   <label>Entreprise</label><input id="c_ent" value="${esc(c.entreprise)}">
@@ -1446,16 +1445,34 @@ function contactForm(c) {
   <label>Notes</label><textarea id="c_notes">${esc(c.notes)}</textarea>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="saveContact">Enregistrer</button><button class="btn grey" data-act="closeSheet">Annuler</button><span class="sp"></span>${c.id ? `<button class="btn danger sm" data-act="delContact">Supprimer</button>` : ""}</div>`);
 }
+function fillContactForm(nom, tel, email, ent) {
+  if (nom && $("#c_nom")) $("#c_nom").value = nom;
+  if (ent && $("#c_ent") && !$("#c_ent").value) $("#c_ent").value = ent;
+  if (tel && $("#c_tel")) $("#c_tel").value = String(tel).replace(/[^\d+]/g, "");
+  if (email && $("#c_email")) $("#c_email").value = email;
+  toast("Contact récupéré : complétez si besoin puis Enregistrer.");
+}
+function parseVcf(txt) {
+  const unf = String(txt).replace(/\r?\n[ \t]/g, "");
+  const get = k => { const m = unf.match(new RegExp("^" + k + "[^:\\n]*:(.+)$", "mi")); return m ? m[1].trim() : ""; };
+  return { nom: get("FN") || get("N").split(";").reverse().join(" ").trim(), tel: get("TEL"), email: get("EMAIL"), ent: get("ORG").replace(/;/g, " ").trim() };
+}
+function pickVcf() {
+  const i = document.createElement("input"); i.type = "file"; i.accept = ".vcf,text/vcard,text/x-vcard,text/directory";
+  i.onchange = async () => { const f = i.files && i.files[0]; if (!f) return; try { const v = parseVcf(await f.text()); if (!v.nom && !v.tel) return toast("Aucun contact lisible dans ce fichier."); fillContactForm(v.nom, v.tel, v.email, v.ent); } catch (e) { toast("Fichier illisible."); } };
+  i.click();
+}
 async function pickPhoneContact() {
+  if (!("contacts" in navigator && "ContactsManager" in window)) {
+    toast("Ce navigateur n'ouvre pas le répertoire : choisissez une carte de contact (.vcf) à la place.");
+    return pickVcf();
+  }
   try {
     const r = await navigator.contacts.select(["name", "tel", "email"], { multiple: false });
     if (!r || !r.length) return;
-    const p = r[0], nom = (p.name || [])[0] || "", tel = (p.tel || [])[0] || "", email = (p.email || [])[0] || "";
-    if (nom) $("#c_nom").value = nom;
-    if (tel) $("#c_tel").value = String(tel).replace(/[^\d+]/g, "");
-    if (email) $("#c_email").value = email;
-    toast("Contact récupéré : complétez si besoin puis Enregistrer.");
-  } catch (e) { toast("Impossible d'ouvrir le répertoire du téléphone."); }
+    const p = r[0];
+    fillContactForm((p.name || [])[0] || "", (p.tel || [])[0] || "", (p.email || [])[0] || "", "");
+  } catch (e) { toast("Impossible d'ouvrir le répertoire : ouvrez l'appli dans Chrome."); }
 }
 function docsOfContact(c) {
   const tel = normTel(c.tel), nom = normNom(c.nom), ent = normNom(c.entreprise);
