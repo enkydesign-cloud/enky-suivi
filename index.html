@@ -961,7 +961,8 @@ function viewContacts() {
 // documents PDF réellement disponibles pour un document (selon son type et son statut)
 function docOutputs(d) {
   const out = [{ act: "pdf", label: d.type === "Devis" ? "Devis" : "Proforma" }];
-  if ((d.type === "Proforma" && d.statut !== "Refusé") || d.factureNumero) out.push({ act: "facture", label: "Facture" });
+  // la facture n'existe qu'une fois le document intégralement payé
+  if (etatDoc(d).solde && ((d.type === "Proforma" && d.statut !== "Refusé") || d.factureNumero)) out.push({ act: "facture", label: "Facture" });
   return out;
 }
 const docDlBtn = (act, id, label) => `<button class="btn sm grey ico" data-act="${act}" data-id="${id}" data-mode="download"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>${label}</button>`;
@@ -2108,7 +2109,7 @@ const acts = {
   paiements: d => paiementsForm(d.id),
   editCharges: d => editCharges(edit.docId, d.i),
   delPaiement: d => delPaiement(edit.docId, d.i),
-  facture: d => { const x = docs.find(z => z.id === d.id); if (!x) return; if (x.type === "Devis" && !x.factureNumero) return toast("Transformez d'abord le devis en proforma pour établir une facture."); if (x.statut === "Refusé" && !x.factureNumero) return toast("Document refusé : facture impossible."); makeFacture(x, d.mode); },
+  facture: d => { const x = docs.find(z => z.id === d.id); if (!x) return; if (!etatDoc(x).solde) return toast("La facture n'est disponible qu'une fois le document entièrement payé."); if (x.type === "Devis" && !x.factureNumero) return toast("Transformez d'abord le devis en proforma pour établir une facture."); if (x.statut === "Refusé" && !x.factureNumero) return toast("Document refusé : facture impossible."); makeFacture(x, d.mode); },
   shareDoc: d => {
     const x = docs.find(z => z.id === d.id); if (!x) return; const outs = docOutputs(x);
     if (outs.length === 1) return acts[outs[0].act]({ id: x.id, mode: "share" });
